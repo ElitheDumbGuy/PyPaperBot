@@ -11,7 +11,19 @@ import re
 def schoolarParser(html):
     result = []
     soup = BeautifulSoup(html, "html.parser")
-    for element in soup.findAll("div", class_="gs_r gs_or gs_scl"):
+
+    # ----- 核心修改 -----
+    #
+    # 旧的查找器 (过于严格):
+    # for element in soup.findAll("div", class_="gs_r gs_or gs_scl"):
+    #
+    # 新的查找器 (使用 CSS 选择器):
+    # 这会找到所有同时包含 .gs_r, .gs_or, 和 .gs_scl 类的 <div> 标签,
+    # 无论它们是否还包含其他类 (比如 .gs_fmar)。
+    #
+    for element in soup.select("div.gs_r.gs_or.gs_scl"):
+        # ----- 结束修改 -----
+
         if not isBook(element):
             title = None
             link = None
@@ -19,7 +31,7 @@ def schoolarParser(html):
             cites = None
             year = None
             authors = None
-            for h3 in element.findAll("h3", class_="gs_rt"):
+            for h3 in element.findAll("h3", class_="gs_rt"):  # findAll在这里没问题
                 found = False
                 for a in h3.findAll("a"):
                     if not found:
@@ -28,7 +40,10 @@ def schoolarParser(html):
                         found = True
             for a in element.findAll("a"):
                 if "Cited by" in a.text:
-                    cites = int(a.text[8:])
+                    try:  # 增加一个 try-except 避免 "Cited by" 后面不是数字时崩溃
+                        cites = int(a.text[8:])
+                    except ValueError:
+                        cites = None
                 if "[PDF]" in a.text:
                     link_pdf = a.get("href")
             for div in element.findAll("div", class_="gs_a"):
