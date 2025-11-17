@@ -27,7 +27,7 @@ def checkVersion():
 
 def start(query, scholar_results, scholar_pages, dwn_dir, proxy, min_date=None, num_limit=None, num_limit_type=None,
           filter_jurnal_file=None, restrict=None, DOIs=None, SciHub_URL=None, chrome_version=None, cites=None,
-          use_doi_as_filename=False, SciDB_URL=None, skip_words=None):
+          use_doi_as_filename=False, SciDB_URL=None, skip_words=None, headless=True, scihub_mode='auto'):
 
     if SciDB_URL is not None and "/scidb" not in SciDB_URL:
         SciDB_URL = urljoin(SciDB_URL, "/scidb/")
@@ -36,7 +36,7 @@ def start(query, scholar_results, scholar_pages, dwn_dir, proxy, min_date=None, 
     if DOIs is None:
         print("Query: {}".format(query))
         print("Cites: {}".format(cites))
-        to_download = ScholarPapersInfo(query, scholar_pages, restrict, min_date, scholar_results, chrome_version, cites, skip_words)
+        to_download = ScholarPapersInfo(query, scholar_pages, restrict, min_date, scholar_results, chrome_version, cites, skip_words, headless=headless)
     else:
         print("Downloading papers from DOIs\n")
         num = 1
@@ -51,6 +51,12 @@ def start(query, scholar_results, scholar_pages, dwn_dir, proxy, min_date=None, 
             num += 1
             i += 1
 
+    # Save initial CSV report before downloads (so we don't lose data if it crashes)
+    if to_download:
+        Paper.generateReport(to_download, dwn_dir + "result.csv")
+        Paper.generateBibtex(to_download, dwn_dir + "bibtex.bib")
+        print("Initial report saved to {}\n".format(dwn_dir + "result.csv"))
+
     if restrict != 0 and to_download:
         if filter_jurnal_file is not None:
             to_download = filterJurnals(to_download, filter_jurnal_file)
@@ -64,10 +70,19 @@ def start(query, scholar_results, scholar_pages, dwn_dir, proxy, min_date=None, 
         if num_limit_type is not None and num_limit_type == 1:
             to_download.sort(key=lambda x: int(x.cites_num) if x.cites_num is not None else 0, reverse=True)
 
-        downloadPapers(to_download, dwn_dir, num_limit, SciHub_URL, SciDB_URL)
-
-    Paper.generateReport(to_download, dwn_dir + "result.csv")
-    Paper.generateBibtex(to_download, dwn_dir + "bibtex.bib")
+        # Create callback to update CSV periodically during downloads
+        def update_csv():
+            Paper.generateReport(to_download, dwn_dir + "result.csv")
+            Paper.generateBibtex(to_download, dwn_dir + "bibtex.bib")
+        
+        downloadPapers(to_download, dwn_dir, num_limit, SciHub_URL, SciDB_URL, 
+                       use_selenium=True, headless=headless, scihub_mode=scihub_mode,
+                       update_csv_callback=update_csv)
+        
+        # Final CSV update after downloads complete
+        Paper.generateReport(to_download, dwn_dir + "result.csv")
+        Paper.generateBibtex(to_download, dwn_dir + "bibtex.bib")
+        print("\nFinal report updated: {}".format(dwn_dir + "result.csv"))
 
 
 def main():
@@ -113,9 +128,15 @@ def main():
     parser.add_argument('--single-proxy', type=str, default=None,
                         help='Use a single proxy. Recommended if using --proxy gives errors')
     parser.add_argument('--selenium-chrome-version', type=int, default=None,
-                        help='First three digits of the chrome version installed on your machine. If provided, selenium will be used for scholar search. It helps avoid bot detection but chrome must be installed.')
+                        help='Chrome version number (major version). If provided, Selenium will be used for scholar search. Auto-detected if Chrome is installed.')
     parser.add_argument('--use-doi-as-filename', action='store_true', default=False,
                         help='Use DOIs as output file names')
+    parser.add_argument('--headless', action='store_true', default=False,
+                        help='Run Chrome in headless mode')
+    parser.add_argument('--no-headless', dest='headless', action='store_false',
+                        help='Run Chrome with visible browser window (default)')
+    parser.add_argument('--scihub-mode', type=str, default='auto', choices=['auto', 'http', 'selenium'],
+                        help='Sci-Hub download mode: auto (HTTP then Selenium), http (HTTP only), selenium (Selenium only). Default: auto')
     args = parser.parse_args()
 
     if args.single_proxy is not None:
@@ -202,7 +223,7 @@ def main():
 
     start(args.query, args.scholar_results, scholar_pages, dwn_dir, proxy, args.min_year , max_dwn, max_dwn_type ,
           args.journal_filter, args.restrict, DOIs, args.scihub_mirror, args.selenium_chrome_version, args.cites,
-          args.use_doi_as_filename, args.annas_archive_mirror, args.skip_words)
+          args.use_doi_as_filename, args.annas_archive_mirror, args.skip_words, args.headless, args.scihub_mode)
 
 if __name__ == "__main__":
     checkVersion()

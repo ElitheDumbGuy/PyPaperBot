@@ -1,28 +1,30 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sun Jun  7 11:59:42 2020
+Google Scholar search and paper information retrieval module.
 
-@author: Vito
+This module handles searching Google Scholar and extracting paper metadata
+using either direct HTTP requests or Selenium browser automation.
 """
+
 import time
 import requests
 import functools
+import os
+import re
+import subprocess
+import platform
 import undetected_chromedriver as uc
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
 from .HTMLparsers import schoolarParser
 from .Crossref import getPapersInfo
 from .NetInfo import NetInfo
 
-# --- 新增导入 ---
-import os
-import re
-import subprocess
-
-
-# --- 结束新增 ---
-
 
 def waithIPchange():
+    """Wait for user to change IP or continue after being blocked."""
     while True:
         inp = input('You have been blocked, try changing your IP or using a VPN. '
                     'Press Enter to continue downloading, or type "exit" to stop and exit....')
@@ -34,98 +36,260 @@ def waithIPchange():
             return True
 
 
-# ----- 核心修改 1: 添加 headless=True 参数 -----
+def _detect_chrome_path():
+    """
+    Detect Chrome browser installation path based on the operating system.
+    
+    Returns:
+        str: Path to Chrome executable, or None if not found
+    """
+    system = platform.system()
+    
+    if system == "Windows":
+        # Common Windows Chrome installation paths
+        possible_paths = [
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+    elif system == "Darwin":  # macOS
+        path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        if os.path.exists(path):
+            return path
+    elif system == "Linux":
+        # Common Linux Chrome paths
+        possible_paths = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+    
+    return None
+
+
+def _detect_chrome_version(chrome_path):
+    """
+    Detect Chrome version by running Chrome with --version flag or reading from installation.
+    
+    Args:
+        chrome_path: Path to Chrome executable
+        
+    Returns:
+        int: Major version number, or None if detection fails
+    """
+    if not chrome_path or not os.path.exists(chrome_path):
+        return None
+    
+    # Try reading version from Windows registry first (faster)
+    if platform.system() == "Windows":
+        try:
+            import winreg
+            key_path = r"SOFTWARE\Google\Chrome\BLBeacon"
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path)
+                version = winreg.QueryValueEx(key, "version")[0]
+                winreg.CloseKey(key)
+                match = re.search(r"(\d+)", version)
+                if match:
+                    return int(match.group(1))
+            except (FileNotFoundError, OSError):
+                # Try Local Machine key
+                try:
+                    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path)
+                    version = winreg.QueryValueEx(key, "version")[0]
+                    winreg.CloseKey(key)
+                    match = re.search(r"(\d+)", version)
+                    if match:
+                        return int(match.group(1))
+                except (FileNotFoundError, OSError):
+                    pass
+        except ImportError:
+            pass  # winreg not available
+    
+    # Fallback: try running Chrome with --version (may timeout)
+    try:
+        command = [chrome_path, "--version"]
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=5)
+        version_string = result.stdout.strip() or result.stderr.strip()
+        match = re.search(r"(\d+)", version_string)
+        if match:
+            return int(match.group(1))
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, ValueError, Exception):
+        pass
+    
+    # Last resort: try to use undetected_chromedriver's auto-detection
+    try:
+        import undetected_chromedriver as uc
+        # This will raise an exception if it can't detect, but we can catch it
+        # Actually, let's just return None and let undetected_chromedriver handle it
+        return None
+    except Exception:
+        return None
+
+
 def scholar_requests(scholar_pages, url, restrict, chrome_version, scholar_results=10, headless=True):
+    """
+    Fetch papers from Google Scholar using either Selenium or direct HTTP requests.
+    
+    Args:
+        scholar_pages: Range or list of page numbers to fetch
+        url: Google Scholar search URL template
+        restrict: Restriction flag for Crossref lookup
+        chrome_version: Chrome version number (None = auto-detect or use HTTP)
+        scholar_results: Number of results per page (default: 10)
+        headless: Whether to run Chrome in headless mode (default: True)
+        
+    Returns:
+        list: List of lists containing Paper objects
+    """
     javascript_error = "Sorry, we can't verify that you're not a robot when JavaScript is turned off"
     to_download = []
     driver = None
 
-    # ... ("半自动" 方案的检测逻辑保持不变) ...
-    # ... (从 "detected_version = None" 到 "chrome_version = None # 退回到 requests") ...
+    # Auto-detect Chrome installation and version
     detected_version = None
-    CHROME_BINARY_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-    if chrome_version is not None:
-        if not os.path.exists(CHROME_BINARY_PATH):
-            print(f"!!! Selenium 错误: Chrome 路径未找到: {CHROME_BINARY_PATH}")
-            print("请安装 Chrome 浏览器或在 Scholar.py 中更正路径。")
-            chrome_version = None
+    chrome_path = None
+    use_selenium = False
+    
+    # Always try to detect Chrome, even if chrome_version is not provided
+    chrome_path = _detect_chrome_path()
+    
+    if chrome_path is None:
+        if chrome_version is not None:
+            print("Warning: Chrome browser not found. Falling back to HTTP requests mode.")
+            print("Please install Google Chrome or specify Chrome path manually.")
+        chrome_version = None
+        use_selenium = False
+    else:
+        # Try to detect version, but don't fail if we can't - let undetected_chromedriver handle it
+        detected_version = _detect_chrome_version(chrome_path)
+        
+        if detected_version is not None:
+            # Use detected version if chrome_version was not provided, or verify provided version
+            if chrome_version is None:
+                chrome_version = detected_version
+                print(f"Auto-detected Chrome version {detected_version} at: {chrome_path}")
+            elif chrome_version != detected_version:
+                print(f"Warning: Specified Chrome version ({chrome_version}) differs from detected version ({detected_version}).")
+                print(f"Using detected version: {detected_version}")
+                chrome_version = detected_version
+            else:
+                print(f"Using Chrome version {detected_version} at: {chrome_path}")
+            use_selenium = True
         else:
-            try:
-                command = [CHROME_BINARY_PATH, "--version"]
-                result = subprocess.run(command, capture_output=True, text=True, check=True)
-                version_string = result.stdout.strip()
-                match = re.search(r"(\d+)", version_string)
-                if match:
-                    detected_version = int(match.group(1))
-                    print(f"检测到 Chrome 版本: {detected_version} (路径: {CHROME_BINARY_PATH})")
-                else:
-                    print(f"无法从 '{version_string}' 中提取版本号。")
-                    chrome_version = None
-            except Exception as e:
-                print(f"自动检测 Chrome 版本时出错: {e}")
-                chrome_version = None
-                # ... (检测逻辑结束) ...
+            # Version detection failed, but Chrome exists - let undetected_chromedriver auto-detect
+            if chrome_version is not None:
+                print(f"Using specified Chrome version {chrome_version} at: {chrome_path}")
+                use_selenium = True
+            else:
+                print(f"Chrome found at {chrome_path}, but version detection failed.")
+                print("Attempting to use Selenium with auto-detection...")
+                use_selenium = True
+                chrome_version = None  # Let undetected_chromedriver auto-detect
 
     for i in scholar_pages:
         while True:
             res_url = url % (scholar_results * (i - 1))
 
-            if chrome_version is not None and detected_version is not None:
+            if use_selenium and chrome_path:
                 if driver is None:
-                    print(f"Using Selenium driver (半自动模式, Headless={headless})")
+                    print(f"Using Selenium driver (Headless={headless})")
+                    try:
+                        # Create driver with or without version_main depending on detection
+                        driver_options = {
+                            'headless': headless,
+                            'use_subprocess': False,
+                            'binary_location': chrome_path
+                        }
+                        if chrome_version is not None:
+                            driver_options['version_main'] = chrome_version
+                            print(f"Initializing Chrome driver with version {chrome_version}...")
+                        else:
+                            print("Initializing Chrome driver with auto-detection...")
+                        
+                        driver = uc.Chrome(**driver_options)
+                        print("Chrome driver initialized successfully.")
+                    except Exception as e:
+                        print(f"Failed to initialize Chrome driver: {e}")
+                        print("Falling back to HTTP requests mode.")
+                        use_selenium = False
+                        driver = None
 
-                    driver = uc.Chrome(
-                        headless=headless,
-                        use_subprocess=False,
-                        binary_location=CHROME_BINARY_PATH,
-                        version_main=detected_version
-                    )
+                if driver is not None:
+                    try:
+                        print(f"Loading Google Scholar page: {res_url}")
+                        driver.get(res_url)
+                        
+                        # Wait for page to load - Google Scholar uses JavaScript heavily
+                        # Wait for specific elements that indicate results are loaded
+                        try:
+                            # Wait for search results container (up to 15 seconds)
+                            # Try multiple selectors as Google Scholar structure may vary
+                            wait = WebDriverWait(driver, 15)
+                            try:
+                                wait.until(EC.presence_of_element_located((By.CLASS_NAME, "gs_r")))
+                                print("Search results loaded.")
+                            except Exception:
+                                # Try alternative selector
+                                try:
+                                    wait.until(EC.presence_of_element_located((By.ID, "gs_res_ccl")))
+                                    print("Search results container found.")
+                                except Exception:
+                                    # Last resort: wait for any content
+                                    wait.until(lambda d: len(d.page_source) > 10000)
+                                    print("Page content loaded.")
+                        except Exception as e:
+                            # If all waits fail, wait a fixed time
+                            print(f"Waiting for page to load (element detection failed: {type(e).__name__})...")
+                            time.sleep(8)  # Increased wait time for headless mode
+                        
+                        html = driver.page_source
+                        
+                        # Verify we got actual content
+                        if len(html) < 1000:
+                            print("Warning: Received very short HTML response, page may not have loaded correctly.")
+                    except Exception as e:
+                        print(f"Error loading page: {e}")
+                        html = None
+                else:
+                    html = None
 
-                driver.get(res_url)
-
-                # ----- ！！！新增的等待！！！ -----
-                # Google Scholar 严重依赖 JS 来加载结果。
-                # driver.get() 立即返回，但此时页面可能还是空的。
-                # 我们添加一个短暂的硬编码等待，让 JS 有时间运行。
-                wait_time = 3  # 3 秒
-                print(f"Waiting {wait_time} seconds for Google Scholar JavaScript to load results...")
-                time.sleep(wait_time)
-                # ---------------------------------
-
-                html = driver.page_source  # 现在才抓取 HTML
-
-                # ----- ！！！新增的调试转储！！！ -----
-                debug_file = "debug_scholar_page.html"
+            if not use_selenium or html is None or html == "":
+                # Fallback to HTTP requests
+                if use_selenium and html is None:
+                    print("Selenium failed, falling back to HTTP requests mode.")
+                    use_selenium = False
+                
                 try:
-                    with open(debug_file, "w", encoding="utf-8") as f:
-                        f.write(html)
-                    print(f"!!! 已将调试HTML转储到: {os.path.abspath(debug_file)}")
+                    response = requests.get(res_url, headers=NetInfo.HEADERS, timeout=30)
+                    html = response.text
                 except Exception as e:
-                    print(f"!!! 无法写入调试文件: {e}")
-                # ------------------------------------
+                    print(f"HTTP request failed: {e}")
+                    html = ""
 
-            else:
-                if chrome_version is not None and detected_version is None:
-                    print("Selenium 启动失败 (未检测到版本)，退回到 'requests' 模式。")
-                    chrome_version = None
-
-                html = requests.get(res_url, headers=NetInfo.HEADERS)
-                html = html.text
-
-            if javascript_error in html:
-                # ... (此块保持不变) ...
+            if html and javascript_error in html:
+                # Bot detection triggered - wait for user to change IP
                 is_continue = waithIPchange()
                 if not is_continue:
+                    if driver:
+                        driver.quit()
                     return to_download
             else:
                 break
 
         papers = schoolarParser(html)
-        # ... (函数的其余部分保持不变) ...
+        
+        # Limit to requested number of results per page
         if len(papers) > scholar_results:
             papers = papers[0:scholar_results]
 
-        print("\nGoogle Scholar page {} : {} papers found".format(i, scholar_results))
+        print("\nGoogle Scholar page {} : {} papers found".format(i, len(papers)))
 
         if len(papers) > 0:
             papersInfo = getPapersInfo(papers, url, restrict, scholar_results)
@@ -134,7 +298,11 @@ def scholar_requests(scholar_pages, url, restrict, chrome_version, scholar_resul
 
             to_download.append(papersInfo)
         else:
-            print("Paper not found...")
+            print("No papers found on this page...")
+
+    # Clean up driver if created
+    if driver:
+        driver.quit()
 
     return to_download
 
@@ -152,9 +320,25 @@ def parseSkipList(skip_words):
     return output_param
 
 
-# ----- 核心修改 3: 添加 headless=True 参数 -----
 def ScholarPapersInfo(query, scholar_pages, restrict, min_date=None, scholar_results=10, chrome_version=None,
                       cites=None, skip_words=None, headless=True):
+    """
+    Search Google Scholar and retrieve paper information.
+    
+    Args:
+        query: Search query string or Google Scholar URL
+        scholar_pages: Range or list of page numbers to fetch
+        restrict: Restriction flag for Crossref lookup
+        min_date: Minimum publication year filter
+        scholar_results: Number of results per page (default: 10)
+        chrome_version: Chrome version number for Selenium (None = auto-detect or HTTP)
+        cites: Paper ID for citation search
+        skip_words: Comma-separated words to exclude from results
+        headless: Whether to run Chrome in headless mode (default: True)
+        
+    Returns:
+        list: Flat list of Paper objects
+    """
     url = r"https://scholar.google.com/scholar?hl=en&as_vis=1&as_sdt=1,5&start=%d"
     if query:
         if len(query) > 7 and (query.startswith("http://") or query.startswith("https://")):
@@ -169,7 +353,6 @@ def ScholarPapersInfo(query, scholar_pages, restrict, min_date=None, scholar_res
     if min_date:
         url += f"&as_ylo={min_date}"
 
-    # ----- 核心修改 4: 传递 headless 参数 -----
     to_download = scholar_requests(scholar_pages, url, restrict, chrome_version, scholar_results, headless=headless)
 
     return [item for sublist in to_download for item in sublist]

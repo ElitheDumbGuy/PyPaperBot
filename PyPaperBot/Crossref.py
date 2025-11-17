@@ -83,6 +83,7 @@ def getPapersInfo(papers, scholar_search_link, restrict, scholar_results):
 
         papers_return.append(paper_found)
 
-        time.sleep(random.randint(1, 10))
+        # Reduced delay to speed up processing (was 1-10 seconds, now 0.5-2 seconds)
+        time.sleep(random.uniform(0.5, 2.0))
 
     return papers_return

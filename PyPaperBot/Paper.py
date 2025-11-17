@@ -28,6 +28,7 @@ class Paper:
 
         self.downloaded = False
         self.downloadedFrom = 0  # 1-SciHub 2-scholar
+        self.download_source = ""
         
         self.use_doi_as_filename = False # if True, the filename will be the DOI
 
@@ -73,13 +74,14 @@ class Paper:
             bibtex_found = p.bibtex is not None
 
             # Determine download source
-            dwn_from = ""
-            if p.downloadedFrom == 1:
-                dwn_from = "SciDB"
-            elif p.downloadedFrom == 2:
-                dwn_from = "SciHub"
-            elif p.downloadedFrom == 3:
-                dwn_from = "Scholar"
+            dwn_from = p.download_source or ""
+            if not dwn_from:
+                if p.downloadedFrom == 1:
+                    dwn_from = "SciDB"
+                elif p.downloadedFrom == 2:
+                    dwn_from = "SciHub"
+                elif p.downloadedFrom == 3:
+                    dwn_from = "Scholar"
 
             # Append row data as a dictionary
             data.append({

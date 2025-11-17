@@ -17,24 +17,60 @@ PyPaperbot is also able to download the **bibtex** of each paper.
 - Download papers given a Google Scholar link
 - Generate Bibtex of the downloaded paper
 - Filter downloaded paper by year, journal and citations number
+- **Hybrid download mode**: Automatically falls back from HTTP to Selenium when encountering anti-bot measures
+- **Improved Chrome detection**: Auto-detects Chrome installation and version on Windows, macOS, and Linux
+- **PDF validation**: Validates downloaded files are actual PDFs, not HTML error pages
+
+## Requirements
+
+- Python 3.11 or higher (Python 3.12+ may have compatibility issues with some dependencies)
+- Google Chrome browser (for Selenium-based downloads, auto-detected)
+- Internet connection
 
 ## Installation
 
-### For normal Users
+### Quick Start (Recommended)
 
-Use `pip` to install from pypi:
+**Windows:**
+```bash
+pypaperbot.bat --query="machine learning" --scholar-pages=1 --dwn-dir="./output" --restrict=1
+```
+
+**Linux/Mac:**
+```bash
+chmod +x pypaperbot.sh
+./pypaperbot.sh --query="machine learning" --scholar-pages=1 --dwn-dir="./output" --restrict=1
+```
+
+The wrapper scripts automatically:
+- Create a virtual environment if it doesn't exist
+- Install all dependencies
+- Run PyPaperBot from source
+
+**No manual installation required!**
+
+### Manual Installation (Alternative)
+
+If you prefer to set up manually:
 
 ```bash
-pip install PyPaperBot
+git clone <repository-url>
+cd PyPaperBot
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python -m PyPaperBot --query="..." --scholar-pages=1 --dwn-dir="./output"
 ```
+
+**Note**: The package includes `undetected-chromedriver` and `selenium` as dependencies. If you encounter issues with Python 3.12+, consider using Python 3.11.
 
 If on windows you get an error saying *error: Microsoft Visual C++ 14.0 is required..* try to install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/it/visual-cpp-build-tools/) or [Visual Studio](https://visualstudio.microsoft.com/it/downloads/)
 
 ### For Termux users
 
-Since numpy cannot be directly installed....
+Since numpy cannot be directly installed, set it up first:
 
-```
+```bash
 pkg install wget
 wget https://its-pointless.github.io/setup-pointless-repo.sh
 pkg install numpy
@@ -42,15 +78,30 @@ export CFLAGS="-Wno-deprecated-declarations -Wno-unreachable-code"
 pip install pandas
 ```
 
-and
+Then use the wrapper script:
 
-```
-pip install PyPaperbot
+```bash
+git clone <repository-url>
+cd PyPaperBot
+chmod +x pypaperbot.sh
+./pypaperbot.sh --query="..." --scholar-pages=1 --dwn-dir="./output"
 ```
 
 ## How to use
 
-PyPaperBot arguments:
+The easiest way is to use the wrapper scripts (see Installation section above). They handle everything automatically.
+
+If you prefer to run manually with an activated virtual environment:
+
+```bash
+# Activate venv first
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Then run
+python -m PyPaperBot --query="machine learning" --scholar-pages=1 --dwn-dir="./output" --restrict=1
+```
+
+### PyPaperBot Arguments
 
 | Arguments                   | Description                                                                                                                                                                           | Type   |
 |-----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
@@ -71,8 +122,11 @@ PyPaperBot arguments:
 | \-\-scholar-results         | Number of scholar results to bedownloaded when \-\-scholar-pages=1                                                                                                                    | int    |
 | \-\-proxy                   | Proxies to be used. Please specify the protocol to be used.                                                                                                                           | string |
 | \-\-single-proxy            | Use a single proxy. Recommended if using --proxy gives errors.                                                                                                                        | string |
-| \-\-selenium-chrome-version | First three digits of the chrome version installed on your machine. If provided, selenium will be used for scholar search. It helps avoid bot detection but chrome must be installed. | int    |
+| \-\-selenium-chrome-version | Chrome version number (major version). If provided, Selenium will be used for scholar search. Auto-detected if Chrome is installed. | int    |
 | \-\-use-doi-as-filename     | If provided, files are saved using the unique DOI as the filename rather than the default paper title                                                                                 | bool    |
+| \-\-headless                | Run Chrome in headless mode (may trigger bot detection)                                                                                                                              | bool    |
+| \-\-no-headless             | Run Chrome with visible browser window (default, more reliable)                                                                                                                      | bool    |
+| \-\-scihub-mode             | Sci-Hub download mode: auto (HTTP then Selenium), http (HTTP only), selenium (Selenium only). Default: auto                                                                        | string |
 | \-h                         | Shows the help                                                                                                                                                                        | --     |
 
 ### Note
@@ -86,9 +140,9 @@ One of the arguments *\-\-scholar-pages*, *\-\-query *, and* \-\-file* is mandat
 The arguments *\-\-scholar-pages* is mandatory when using *\-\-query *
 The argument *\-\-dwn-dir* is mandatory
 
-The argument *\-\-journal-filter*  require the path of a CSV containing a list of journal name paired with a boolean which indicates whether or not to consider that journal (0: don't consider /1: consider) [Example](https://github.com/ferru97/PyPaperBot/blob/master/file_examples/jurnals.csv)
+The argument *\-\-journal-filter* requires the path of a CSV file containing a list of journal names paired with a boolean (0: don't consider / 1: consider). Format: `journal_list;include_list` with semicolon separator.
 
-The argument *\-\-doi-file*  require the path of a txt file containing the list of paper's DOIs to download organized with one DOI per line [Example](https://github.com/ferru97/PyPaperBot/blob/master/file_examples/papers.txt)
+The argument *\-\-doi-file* requires the path of a text file containing a list of paper DOIs to download, with one DOI per line.
 
 Use the --proxy argument at the end of all other arguments and specify the protocol to be used. See the examples to understand how to use the option.
 
@@ -142,6 +196,24 @@ python -m PyPaperBot --query=rheumatoid+arthritis --scholar-pages=1 --scholar-re
 ```
 ```
 python -m PyPaperBot --query=rheumatoid+arthritis --scholar-pages=1 --scholar-results=7 --dwn-dir=/download -single-proxy=http://1.1.1.1::8080
+```
+
+Using hybrid download mode (automatically falls back to Selenium if HTTP fails):
+
+```bash
+python -m PyPaperBot --query="machine learning" --scholar-pages=1 --dwn-dir="C:\User\example\papers" --scihub-mode=auto
+```
+
+Force Selenium-only mode for Sci-Hub downloads:
+
+```bash
+python -m PyPaperBot --query="machine learning" --scholar-pages=1 --dwn-dir="C:\User\example\papers" --scihub-mode=selenium
+```
+
+Run Chrome with visible window (for debugging):
+
+```bash
+python -m PyPaperBot --query="machine learning" --scholar-pages=1 --dwn-dir="C:\User\example\papers" --no-headless
 ```
 
 In termux, you can directly use ```PyPaperBot``` followed by arguments...

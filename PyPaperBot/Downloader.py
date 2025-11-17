@@ -1,30 +1,67 @@
 from os import path
 import requests
-import time
-from .HTMLparsers import getSchiHubPDF, SciHubUrls
-import random
+import sys
+import io
+import urllib.parse
 from .NetInfo import NetInfo
-from .Utils import URLjoin
+from .scihub_client import SciHubClient, SciHubDownloadError
+
+# Set UTF-8 encoding for stdout on Windows to handle Unicode properly
+if sys.platform == 'win32':
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        # If stdout is already wrapped or not available, use a wrapper function
+        pass
 
 
-def setSciHubUrl():
-    print("Searching for a sci-hub mirror")
-    r = requests.get(NetInfo.SciHub_URLs_repo, headers=NetInfo.HEADERS)
-    links = SciHubUrls(r.text)
-
-    for l in links:
+def safe_print(text):
+    """Print text safely handling Unicode characters on Windows."""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # Fallback: replace problematic characters with ASCII equivalents
+        if isinstance(text, str):
+            safe_text = text.encode('ascii', errors='replace').decode('ascii')
+        else:
+            safe_text = str(text).encode('ascii', errors='replace').decode('ascii')
         try:
-            print("Trying with {}...".format(l))
-            r = requests.get(l, headers=NetInfo.HEADERS)
-            if r.status_code == 200:
-                NetInfo.SciHub_URL = l
-                break
-        except:
-            pass
-    else:
-        print(
-            "\nNo working Sci-Hub instance found!\nIf in your country Sci-Hub is not available consider using a VPN or a proxy\nYou can use a specific mirror mirror with the --scihub-mirror argument")
-        NetInfo.SciHub_URL = "https://sci-hub.st"
+            print(safe_text)
+        except Exception:
+            # Last resort: just print a placeholder
+            print("[Title contains unsupported characters]")
+
+
+ALLOWED_SCIHUB_MIRRORS = ["https://sci-hub.st", "https://sci-hub.se"]
+
+
+def _normalize_mirror(url):
+    if not url:
+        return None
+    return url.rstrip('/')
+
+
+def get_preferred_scihub_mirrors(custom_url=None):
+    mirrors = []
+    normalized_allowed = [_normalize_mirror(url) for url in ALLOWED_SCIHUB_MIRRORS]
+    custom_normalized = _normalize_mirror(custom_url)
+
+    if custom_normalized:
+        if custom_normalized in normalized_allowed:
+            mirrors.append(custom_normalized)
+        else:
+            print("Warning: Custom Sci-Hub mirror '{}' is not supported. Using defaults: {}".format(
+                custom_url, ", ".join(ALLOWED_SCIHUB_MIRRORS)))
+
+    for url in normalized_allowed:
+        if url not in mirrors:
+            mirrors.append(url)
+
+    # Ensure we always have at least the default mirrors
+    if not mirrors:
+        mirrors = normalized_allowed
+
+    return mirrors
 
 
 def getSaveDir(folder, fname):
@@ -37,71 +74,171 @@ def getSaveDir(folder, fname):
     return dir_
 
 
-def saveFile(file_name, content, paper, dwn_source):
+def saveFile(file_name, content, paper, dwn_source, source_label=None):
     f = open(file_name, 'wb')
     f.write(content)
     f.close()
 
     paper.downloaded = True
     paper.downloadedFrom = dwn_source
+    if source_label:
+        paper.download_source = source_label
+    elif dwn_source == 1:
+        paper.download_source = "SciDB"
+    elif dwn_source == 2:
+        paper.download_source = "Sci-Hub"
+    elif dwn_source == 3:
+        paper.download_source = "Google Scholar"
 
 
-def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None):
+def _format_scihub_label(mirror_url):
+    parsed = urllib.parse.urlparse(mirror_url)
+    host = parsed.netloc or mirror_url
+    return "Sci-Hub ({})".format(host)
 
-    NetInfo.SciHub_URL = SciHub_URL
-    if NetInfo.SciHub_URL is None:
-        setSciHubUrl()
-    if SciDB_URL is not None:
-        NetInfo.SciDB_URL = SciDB_URL
 
-    print("\nUsing Sci-Hub mirror {}".format(NetInfo.SciHub_URL))
-    print("Using Sci-DB mirror {}".format(NetInfo.SciDB_URL))
-    print("You can use --scidb-mirror and --scidb-mirror to specify your're desired mirror URL\n")
+def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
+                    use_selenium=True, headless=True, selenium_driver=None, scihub_mode='auto',
+                    update_csv_callback=None):
+
+    preferred_mirrors = get_preferred_scihub_mirrors(SciHub_URL)
+    NetInfo.SciHub_URL = preferred_mirrors[0]
+
+    print("\nSci-Hub mirrors order: {}".format(" -> ".join(preferred_mirrors[:2])))
+    print("The downloader will try Google Scholar first, then Sci-Hub mirrors.\n")
+
+    # Initialize hybrid Sci-Hub client
+    scihub_client = None
+    if scihub_mode in ('auto', 'selenium'):
+        scihub_client = SciHubClient(
+            scihub_url=NetInfo.SciHub_URL,
+            use_selenium=(scihub_mode == 'selenium' or use_selenium),
+            headless=headless,
+            selenium_driver=selenium_driver,
+            preferred_mirrors=preferred_mirrors
+        )
 
     num_downloaded = 0
     paper_number = 1
-    paper_files = []
-    for p in papers:
-        if p.canBeDownloaded() and (num_limit is None or num_downloaded < num_limit):
-            print("Download {} of {} -> {}".format(paper_number, len(papers), p.title))
-            paper_number += 1
-
-            pdf_dir = getSaveDir(dwnl_dir, p.getFileName())
-
-            failed = 0
-            url = ""
-            while not p.downloaded and failed != 5:
+    
+    try:
+        for p in papers:
+            if p.canBeDownloaded() and (num_limit is None or num_downloaded < num_limit):
                 try:
-                    dwn_source = 1  # 1 scidb - 2 scihub - 3 scholar
-                    if failed == 0 and p.DOI is not None:
-                        url = URLjoin(NetInfo.SciDB_URL, p.DOI)
-                    if failed == 1 and p.DOI is not None:
-                        url = URLjoin(NetInfo.SciHub_URL, p.DOI)
-                        dwn_source = 2
-                    if failed == 2 and p.scholar_link is not None:
-                        url = URLjoin(NetInfo.SciHub_URL, p.scholar_link)
-                    if failed == 3 and p.scholar_link is not None and p.scholar_link[-3:] == "pdf":
-                        url = p.scholar_link
-                        dwn_source = 3
-                    if failed == 4 and p.pdf_link is not None:
-                        url = p.pdf_link
-                        dwn_source = 3
+                    safe_print("Download {} of {} -> {}".format(paper_number, len(papers), p.title))
+                    paper_number += 1
 
-                    if url != "":
-                        r = requests.get(url, headers=NetInfo.HEADERS)
-                        content_type = r.headers.get('content-type')
+                    pdf_dir = getSaveDir(dwnl_dir, p.getFileName())
 
-                        if (dwn_source == 1 or dwn_source == 2) and 'application/pdf' not in content_type and "application/octet-stream" not in content_type:
-                            time.sleep(random.randint(1, 4))
+                    downloaded = False
+                    download_error = None
+                    
+                    # Attempt 1: Direct PDF link from Google Scholar (fastest, try first)
+                    if not downloaded and p.pdf_link is not None:
+                        try:
+                            r = requests.get(p.pdf_link, headers=NetInfo.HEADERS, timeout=15)
+                            if r.content[:4] == b'%PDF':
+                                saveFile(pdf_dir, r.content, p, 3, "Google Scholar (direct link)")
+                                downloaded = True
+                                num_downloaded += 1
+                                safe_print("  Downloaded from Google Scholar direct link")
+                        except Exception:
+                            pass
+                    
+                    # Attempt 2: Direct PDF link from scholar (if link ends with pdf)
+                    if not downloaded and p.scholar_link is not None and p.scholar_link[-3:].lower() == "pdf":
+                        try:
+                            r = requests.get(p.scholar_link, headers=NetInfo.HEADERS, timeout=15)
+                            if r.content[:4] == b'%PDF':
+                                saveFile(pdf_dir, r.content, p, 3, "Google Scholar (PDF link)")
+                                downloaded = True
+                                num_downloaded += 1
+                                safe_print("  Downloaded from Google Scholar PDF link")
+                        except Exception:
+                            pass
 
-                            pdf_link = getSchiHubPDF(r.text)
-                            if pdf_link is not None:
-                                r = requests.get(pdf_link, headers=NetInfo.HEADERS)
-                                content_type = r.headers.get('content-type')
-
-                        if 'application/pdf' in content_type or "application/octet-stream" in content_type:
-                            paper_files.append(saveFile(pdf_dir, r.content, p, dwn_source))
-                except Exception:
-                    pass
-
-                failed += 1
+                    # Attempt 3: Sci-Hub via hybrid client (mirrors: .st then .se)
+                    if not downloaded and p.DOI is not None and scihub_client:
+                        try:
+                            pdf_content, source_url, mirror_url = scihub_client.download(p.DOI, is_doi=True)
+                            saveFile(
+                                pdf_dir,
+                                pdf_content,
+                                p,
+                                2,
+                                _format_scihub_label(mirror_url)
+                            )
+                            downloaded = True
+                            num_downloaded += 1
+                            safe_print("  Downloaded from Sci-Hub (DOI) via {}".format(mirror_url))
+                        except SciHubDownloadError as e:
+                            error_msg = str(e)
+                            if "not available" in error_msg.lower():
+                                safe_print("  Sci-Hub: Paper not available in database")
+                                download_error = "Not available in Sci-Hub"
+                            else:
+                                safe_print("  Sci-Hub: Download failed - {}".format(error_msg))
+                                download_error = "Sci-Hub error: " + error_msg[:50]
+                        except Exception as e:
+                            error_type = type(e).__name__
+                            safe_print("  Sci-Hub: Download failed ({})".format(error_type))
+                            download_error = "Sci-Hub error: " + error_type
+                    
+                    # Attempt 4: Sci-Hub via hybrid client (using scholar link if no DOI)
+                    if not downloaded and p.scholar_link is not None and scihub_client:
+                        try:
+                            pdf_content, source_url, mirror_url = scihub_client.download(p.scholar_link, is_doi=False)
+                            saveFile(
+                                pdf_dir,
+                                pdf_content,
+                                p,
+                                2,
+                                _format_scihub_label(mirror_url)
+                            )
+                            downloaded = True
+                            num_downloaded += 1
+                            safe_print("  Downloaded from Sci-Hub (Scholar link) via {}".format(mirror_url))
+                        except SciHubDownloadError as e:
+                            error_msg = str(e)
+                            if "not available" in error_msg.lower():
+                                safe_print("  Sci-Hub: Paper not available in database")
+                                if not download_error:
+                                    download_error = "Not available in Sci-Hub"
+                            else:
+                                safe_print("  Sci-Hub: Download failed - {}".format(error_msg))
+                                if not download_error:
+                                    download_error = "Sci-Hub error: " + error_msg[:50]
+                        except Exception as e:
+                            error_type = type(e).__name__
+                            safe_print("  Sci-Hub: Download failed ({})".format(error_type))
+                            if not download_error:
+                                download_error = "Sci-Hub error: " + error_type
+                    
+                    if not downloaded:
+                        safe_print("  Failed to download: {}".format(p.title))
+                        if download_error:
+                            safe_print("  Error: {}".format(download_error))
+                        # Mark as failed in paper object (for CSV reporting)
+                        p.downloaded = False
+                        p.downloadedFrom = 0
+                        p.download_source = ""
+                    
+                    # Update CSV every 10 papers to avoid losing progress
+                    if update_csv_callback and paper_number % 10 == 0:
+                        try:
+                            update_csv_callback()
+                        except Exception:
+                            pass  # Don't fail downloads if CSV update fails
+                
+                except Exception as e:
+                    # Catch any unexpected errors during paper processing
+                    safe_print("  ERROR processing paper: {} - {}".format(p.title[:50] if p.title else "Unknown", type(e).__name__))
+                    p.downloaded = False
+                    p.downloadedFrom = 0
+                    # Continue with next paper
+                    continue
+    
+    finally:
+        # Clean up Sci-Hub client resources
+        if scihub_client:
+            scihub_client.close()
