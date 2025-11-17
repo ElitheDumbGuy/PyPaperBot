@@ -6,6 +6,7 @@ Created on Sun Jun  7 11:59:42 2020
 """
 from bs4 import BeautifulSoup
 import re
+from lxml import etree
 
 
 def schoolarParser(html):
@@ -84,29 +85,95 @@ def isBook(tag):
     return result
 
 
-def getSchiHubPDF(html):
+def getSchiHubPDF_fallback(html):
+    """
+    Extract PDF URL from Sci-Hub HTML page.
+    Based on working example: check iframe -> embed -> object, in that order.
+    """
     result = None
     soup = BeautifulSoup(html, "html.parser")
 
-    iframe = soup.find(id='pdf') #scihub logic
-    plugin = soup.find(id='plugin') #scihub logic
-    download_scidb = soup.find("a", text=lambda text: text and "Download" in text, href=re.compile(r"\.pdf$")) #scidb logic
-    embed_scihub = soup.find("embed") #scihub logic
+    # Working approach: iframe first
+    iframe = soup.find('iframe')
+    if iframe and iframe.has_attr('src'):
+        result = iframe.get('src')
+    
+    # Then try embed
+    if not result:
+        embed = soup.find('embed')
+        if embed and embed.has_attr('src'):
+            result = embed.get('src')
+    
+    # Then try object
+    if not result:
+        obj = soup.find('object')
+        if obj and obj.has_attr('data'):
+            result = obj.get('data')
+    
+    # Fallback: plugin element
+    if not result:
+        plugin = soup.find(id='plugin')
+        if plugin and plugin.has_attr('src'):
+            result = plugin.get('src')
+    
+    # Fallback: scidb download link
+    if not result:
+        download_scidb = soup.find("a", text=lambda text: text and "Download" in text, href=re.compile(r"\.pdf$"))
+        if download_scidb:
+            result = download_scidb.get("href")
+    
+    # Handle relative URLs (prepend https:)
+    if result and not result.startswith('http'):
+        if result.startswith('//'):
+            result = "https:" + result
+        elif result.startswith('/'):
+            # For absolute paths, we'd need base URL, but try https: first
+            result = "https:" + result
 
-    if iframe is not None:
-        result = iframe.get("src")
+    return result
 
-    if plugin is not None and result is None:
-        result = plugin.get("src")
 
-    if result is not None and result[0] != "h":
-        result = "https:" + result
+def getSchiHubPDF_xpath(html_content):
+    """
+    Extract PDF URL from Sci-Hub HTML page using XPath.
+    """
+    if not html_content:
+        return None
+        
+    try:
+        html = etree.HTML(html_content)
+        
+        # XPath from SciHubEVA, looks for src attribute in elements with id="pdf" or inside id="article"
+        pdf_xpath = '//*[@id="pdf"]/@src|//*[@id="article"]//iframe/@src'
+        results = html.xpath(pdf_xpath)
+        
+        if results:
+            return results[0]
+            
+    except Exception:
+        # Fallback to BeautifulSoup if lxml fails, though it's less likely
+        pass
 
-    if download_scidb is not None and result is None:
-        result = download_scidb.get("href")
+    # Fallback logic from previous implementation
+    from bs4 import BeautifulSoup
+    import re
 
-    if embed_scihub is not None and result is None:
-        result = embed_scihub.get("original-url")
+    result = None
+    soup = BeautifulSoup(html_content, "html.parser")
+    
+    iframe = soup.find('iframe')
+    if iframe and iframe.has_attr('src'):
+        result = iframe.get('src')
+    
+    if not result:
+        embed = soup.find('embed')
+        if embed and embed.has_attr('src'):
+            result = embed.get('src')
+    
+    if not result:
+        obj = soup.find('object')
+        if obj and obj.has_attr('data'):
+            result = obj.get('data')
 
     return result
 

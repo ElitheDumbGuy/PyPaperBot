@@ -32,7 +32,7 @@ def safe_print(text):
             print("[Title contains unsupported characters]")
 
 
-ALLOWED_SCIHUB_MIRRORS = ["https://sci-hub.st", "https://sci-hub.se"]
+    ALLOWED_SCIHUB_MIRRORS = ["https://sci-hub.mk", "https://sci-hub.vg", "https://sci-hub.al", "https://sci-hub.shop"]
 
 
 def _normalize_mirror(url):
@@ -104,7 +104,7 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
     preferred_mirrors = get_preferred_scihub_mirrors(SciHub_URL)
     NetInfo.SciHub_URL = preferred_mirrors[0]
 
-    print("\nSci-Hub mirrors order: {}".format(" -> ".join(preferred_mirrors[:2])))
+    print("\nSci-Hub mirrors order: {}".format(" -> ".join(preferred_mirrors[:4])))
     print("The downloader will try Google Scholar first, then Sci-Hub mirrors.\n")
 
     # Initialize hybrid Sci-Hub client
@@ -157,7 +157,7 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                         except Exception:
                             pass
 
-                    # Attempt 3: Sci-Hub via hybrid client (mirrors: .st then .se)
+                    # Attempt 3: Sci-Hub via hybrid client (mirrors: .mk, .shop, .vg)
                     if not downloaded and p.DOI is not None and scihub_client:
                         try:
                             pdf_content, source_url, mirror_url = scihub_client.download(p.DOI, is_doi=True)
