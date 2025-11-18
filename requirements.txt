@@ -1,4 +1,7 @@
-﻿astroid==3.3.5
+﻿import pandas
+import rapidfuzz
+
+astroid==3.3.5
 attrs==24.2.0
 beautifulsoup4==4.12.3
 bibtexparser==1.4.2

@@ -133,6 +133,56 @@ def getSchiHubPDF_fallback(html):
     return result
 
 
+def is_scihub_paper_not_available(html_content):
+    """
+    Check if Sci-Hub returned a "paper not available" page.
+    Returns True if the paper is not in the database.
+    
+    Specifically looks for: "Alas, the following paper is not yet available in my database"
+    """
+    if not html_content:
+        return False
+    
+    try:
+        # Check for the specific "not yet available" message (most reliable)
+        if b'not yet available in my database' in html_content:
+            return True
+        
+        # Also check for the block-rounded message element with specific text
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html_content, "html.parser")
+        message_block = soup.find('block-rounded', class_='message')
+        if message_block:
+            text = message_block.get_text().lower()
+            # Only return True if it specifically mentions "not yet available" or "not available"
+            if 'not yet available' in text or 'not available in my database' in text:
+                return True
+            
+    except Exception:
+        pass
+    
+    return False
+
+
+def is_cloudflare_page(html_content):
+    """
+    Check if we hit a Cloudflare challenge page.
+    """
+    if not html_content:
+        return False
+    
+    try:
+        # Common Cloudflare indicators
+        if b'Cloudflare' in html_content or b'cf-browser-verification' in html_content:
+            return True
+        if b'Just a moment' in html_content or b'Checking your browser' in html_content:
+            return True
+    except Exception:
+        pass
+    
+    return False
+
+
 def getSchiHubPDF_xpath(html_content):
     """
     Extract PDF URL from Sci-Hub HTML page using XPath.

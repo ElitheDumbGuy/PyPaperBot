@@ -13,7 +13,7 @@ import urllib.parse
 class Paper:
 
 
-    def __init__(self,title=None, scholar_link=None, scholar_page=None, cites=None, link_pdf=None, year=None, authors=None):        
+    def __init__(self,title=None, scholar_link=None, scholar_page=None, cites=None, link_pdf=None, year=None, authors=None, DOI=None, jurnal=None):        
         self.title = title
         self.scholar_page = scholar_page
         self.scholar_link = scholar_link
@@ -21,10 +21,21 @@ class Paper:
         self.year = year
         self.authors = authors
 
-        self.jurnal = None
+        self.jurnal = jurnal
         self.cites_num = None
         self.bibtex = None
-        self.DOI = None
+        self.DOI = DOI
+
+        # --- New fields for citation analysis ---
+        self.is_seed = False
+        self.api_queried = False # Flag to check if OpenCitations has been queried for this paper
+        self.references = []
+        self.citations = []
+        self.citation_count = 0
+        self.reference_count = 0
+        self.co_citation_count = 0
+        self.journal_metrics = None
+        # --- End new fields ---
 
         self.downloaded = False
         self.downloadedFrom = 0  # 1-SciHub 2-scholar

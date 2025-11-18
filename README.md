@@ -1,241 +1,249 @@
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.me/ferru97)
 
-# NEWS: PyPaperBot development is back on track!
-### Join the [Telegram](https://t.me/pypaperbotdatawizards) channel to stay updated, report bugs, or request custom data mining scripts.
----
-
 # PyPaperBot
 
-PyPaperBot is a Python tool for **downloading scientific papers and bibtex** using Google Scholar, Crossref, SciHub, and SciDB.
-The tool tries to download papers from different sources such as PDF provided by Scholar, Scholar related links, and Scihub.
-PyPaperbot is also able to download the **bibtex** of each paper.
+**PyPaperBot** is a professional Python tool for downloading scientific papers and bibliographic data using **Google Scholar**, **Crossref**, and **Sci-Hub**. The tool intelligently tries multiple sources to maximize download success rates while respecting rate limits and handling anti-bot measures gracefully.
 
-## Features
+### Join the [Telegram](https://t.me/pypaperbotdatawizards) channel to stay updated, report bugs, or request custom data mining scripts.
 
-- Download papers given a query
-- Download papers given paper's DOIs
-- Download papers given a Google Scholar link
-- Generate Bibtex of the downloaded paper
-- Filter downloaded paper by year, journal and citations number
-- **Hybrid download mode**: Automatically falls back from HTTP to Selenium when encountering anti-bot measures
-- **Improved Chrome detection**: Auto-detects Chrome installation and version on Windows, macOS, and Linux
-- **PDF validation**: Validates downloaded files are actual PDFs, not HTML error pages
+---
 
-## Requirements
+## ✨ Key Features
 
-- Python 3.11 or higher (Python 3.12+ may have compatibility issues with some dependencies)
-- Google Chrome browser (for Selenium-based downloads, auto-detected)
-- Internet connection
+- 📚 **Multi-Source Downloads**: Automatically tries Google Scholar direct links, then falls back to Sci-Hub mirrors
+- 🔍 **Flexible Search**: Download papers by query, DOI, DOI list, or citation tracking
+- 📖 **BibTeX Generation**: Automatically generates bibliographic data for all papers
+- 🎯 **Smart Filtering**: Filter by publication year, journal, or citation count
+- 🚀 **Intelligent Fallback**: Hybrid HTTP/Selenium mode with automatic failover
+- ✅ **PDF Validation**: Ensures downloaded files are valid PDFs, not error pages
+- 🌐 **Multi-Mirror Support**: Uses multiple Sci-Hub mirrors with automatic retry on failure
+- 🛡️ **Robust Error Handling**: Gracefully handles timeouts, blocks, and unavailable papers
+- 📊 **Progress Tracking**: Real-time download progress with detailed source attribution
+- 🔄 **Auto-Detection**: Automatically detects Chrome installation and version
 
-## Installation
+## 📋 Requirements
 
-### Quick Start (Recommended)
+- **Python 3.11+** (Python 3.12+ may have compatibility issues with some dependencies)
+- **Google Chrome** (auto-detected on Windows, macOS, and Linux)
+- **Internet connection**
 
-**Windows:**
+## 🚀 Quick Start
+
+### Windows
 ```bash
 pypaperbot.bat --query="machine learning" --scholar-pages=1 --dwn-dir="./output" --restrict=1
 ```
 
-**Linux/Mac:**
+### Linux/Mac
 ```bash
 chmod +x pypaperbot.sh
 ./pypaperbot.sh --query="machine learning" --scholar-pages=1 --dwn-dir="./output" --restrict=1
 ```
 
-The wrapper scripts automatically:
-- Create a virtual environment if it doesn't exist
-- Install all dependencies
-- Run PyPaperBot from source
+**The wrapper scripts automatically:**
+- ✅ Create a virtual environment if needed
+- ✅ Install all dependencies
+- ✅ Run PyPaperBot from source
 
 **No manual installation required!**
 
-### Manual Installation (Alternative)
+---
 
-If you prefer to set up manually:
+## 📦 Manual Installation
+
+If you prefer manual setup:
 
 ```bash
 git clone <repository-url>
 cd PyPaperBot
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-python -m PyPaperBot --query="..." --scholar-pages=1 --dwn-dir="./output"
 ```
 
-**Note**: The package includes `undetected-chromedriver` and `selenium` as dependencies. If you encounter issues with Python 3.12+, consider using Python 3.11.
+### Windows Users
+If you encounter *"Microsoft Visual C++ 14.0 is required"* errors, install:
+- [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+- Or [Visual Studio](https://visualstudio.microsoft.com/downloads/)
 
-If on windows you get an error saying *error: Microsoft Visual C++ 14.0 is required..* try to install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/it/visual-cpp-build-tools/) or [Visual Studio](https://visualstudio.microsoft.com/it/downloads/)
-
-### For Termux users
-
-Since numpy cannot be directly installed, set it up first:
-
+### Termux Users
 ```bash
 pkg install wget
 wget https://its-pointless.github.io/setup-pointless-repo.sh
 pkg install numpy
 export CFLAGS="-Wno-deprecated-declarations -Wno-unreachable-code"
 pip install pandas
-```
-
-Then use the wrapper script:
-
-```bash
-git clone <repository-url>
-cd PyPaperBot
 chmod +x pypaperbot.sh
 ./pypaperbot.sh --query="..." --scholar-pages=1 --dwn-dir="./output"
 ```
 
-## How to use
+---
 
-The easiest way is to use the wrapper scripts (see Installation section above). They handle everything automatically.
+## 📖 Usage
 
-If you prefer to run manually with an activated virtual environment:
-
+### Basic Usage
 ```bash
-# Activate venv first
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Then run
-python -m PyPaperBot --query="machine learning" --scholar-pages=1 --dwn-dir="./output" --restrict=1
+python -m PyPaperBot --query="machine learning" --scholar-pages=3 --dwn-dir="./papers" --restrict=1
 ```
 
-### PyPaperBot Arguments
+### Command-Line Arguments
 
-| Arguments                   | Description                                                                                                                                                                           | Type   |
-|-----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
-| \-\-query                   | Query to make on Google Scholar or Google Scholar page link                                                                                                                           | string |
-| \-\-skip-words              | List of comma separated words i.e. "word1,word2 word3,word4". Articles containing any of this word in the title or google scholar summary will be ignored                             | string |
-| \-\-cites                   | Paper ID (from scholar address bar when you search cites) if you want get only citations of that paper                                                                                | string                              | string |
-| \-\-doi                     | DOI of the paper to download (this option uses only SciHub to download)                                                                                                               | string |
-| \-\-doi-file                | File .txt containing the list of paper's DOIs to download                                                                                                                             | string |
-| \-\-scholar-pages           | Number or range of Google Scholar pages to inspect. Each page has a maximum of 10 papers                                                                                              | string |
-| \-\-dwn-dir                 | Directory path in which to save the result                                                                                                                                            | string |
-| \-\-min-year                | Minimal publication year of the paper to download                                                                                                                                     | int    |
-| \-\-max-dwn-year            | Maximum number of papers to download sorted by year                                                                                                                                   | int    |
-| \-\-max-dwn-cites           | Maximum number of papers to download sorted by number of citations                                                                                                                    | int    |
-| \-\-journal-filter          | CSV file path of the journal filter (More info on github)                                                                                                                             | string |
-| \-\-restrict                | 0:Download only Bibtex - 1:Download only papers PDF                                                                                                                                   | int    |
-| \-\-scihub-mirror           | Mirror for downloading papers from sci-hub. If not set, it is selected automatically                                                                                                  | string |
-| \-\-annas-archive-mirror    | Mirror for downloading papers from Annas Archive (SciDB). If not set, https://annas-archive.se is used                                                                                | string |
-| \-\-scholar-results         | Number of scholar results to bedownloaded when \-\-scholar-pages=1                                                                                                                    | int    |
-| \-\-proxy                   | Proxies to be used. Please specify the protocol to be used.                                                                                                                           | string |
-| \-\-single-proxy            | Use a single proxy. Recommended if using --proxy gives errors.                                                                                                                        | string |
-| \-\-selenium-chrome-version | Chrome version number (major version). If provided, Selenium will be used for scholar search. Auto-detected if Chrome is installed. | int    |
-| \-\-use-doi-as-filename     | If provided, files are saved using the unique DOI as the filename rather than the default paper title                                                                                 | bool    |
-| \-\-headless                | Run Chrome in headless mode (may trigger bot detection)                                                                                                                              | bool    |
-| \-\-no-headless             | Run Chrome with visible browser window (default, more reliable)                                                                                                                      | bool    |
-| \-\-scihub-mode             | Sci-Hub download mode: auto (HTTP then Selenium), http (HTTP only), selenium (Selenium only). Default: auto                                                                        | string |
-| \-h                         | Shows the help                                                                                                                                                                        | --     |
+| Argument | Description | Type |
+|----------|-------------|------|
+| `--query` | Search query or Google Scholar page link | string |
+| `--doi` | Single DOI to download | string |
+| `--doi-file` | Text file with list of DOIs (one per line) | string |
+| `--cites` | Paper ID to download citations for (from Scholar URL) | string |
+| `--scholar-pages` | Pages to download (e.g., `3` or `4-7`) | string |
+| `--scholar-results` | Results per page when `--scholar-pages=1` (max 10) | int |
+| `--dwn-dir` | **[Required]** Output directory for downloads | string |
+| `--min-year` | Minimum publication year filter | int |
+| `--max-dwn-year` | Max papers to download, sorted by year | int |
+| `--max-dwn-cites` | Max papers to download, sorted by citations | int |
+| `--journal-filter` | CSV file for journal filtering | string |
+| `--restrict` | `0`: BibTeX only, `1`: PDFs only | int |
+| `--skip-words` | Comma-separated words to exclude from titles | string |
+| `--scihub-mirror` | Custom Sci-Hub mirror (auto-selected if not set) | string |
+| `--scihub-mode` | `auto`, `http`, or `selenium` (default: `auto`) | string |
+| `--use-doi-as-filename` | Use DOI instead of title for filenames | flag |
+| `--headless` | Run Chrome in headless mode (may trigger detection) | flag |
+| `--no-headless` | **[Default]** Run Chrome with visible window | flag |
+| `--proxy` | List of proxies (specify at end of command) | string |
+| `--single-proxy` | Single proxy (recommended over `--proxy`) | string |
 
-### Note
+### Important Notes
 
-You can use only one of the arguments in the following groups
+**Mutually Exclusive Options:**
+- Only one of: `--query`, `--doi`, `--doi-file`
+- Only one of: `--max-dwn-year`, `--max-dwn-cites`
 
-- *\-\-query*, *\-\-doi-file*, and *\-\-doi* 
-- *\-\-max-dwn-year* and *and max-dwn-cites*
+**Required Arguments:**
+- `--dwn-dir` is always required
+- `--scholar-pages` is required when using `--query`
 
-One of the arguments *\-\-scholar-pages*, *\-\-query *, and* \-\-file* is mandatory
-The arguments *\-\-scholar-pages* is mandatory when using *\-\-query *
-The argument *\-\-dwn-dir* is mandatory
+**File Formats:**
+- `--journal-filter`: CSV with format `journal_list;include_list` (semicolon separator, 0=exclude, 1=include)
+- `--doi-file`: Plain text with one DOI per line
 
-The argument *\-\-journal-filter* requires the path of a CSV file containing a list of journal names paired with a boolean (0: don't consider / 1: consider). Format: `journal_list;include_list` with semicolon separator.
+---
 
-The argument *\-\-doi-file* requires the path of a text file containing a list of paper DOIs to download, with one DOI per line.
+## 💡 Examples
 
-Use the --proxy argument at the end of all other arguments and specify the protocol to be used. See the examples to understand how to use the option.
-
-## SciHub access
-
-If access to SciHub is blocked in your country, consider using a free VPN service like [ProtonVPN](https://protonvpn.com/) 
-Also, you can use proxy option above.
-
-## Example
-
-Download a maximum of 30 papers from the first 3 pages given a query and starting from 2018 using the mirror https://sci-hub.do:
-
+### Download papers by query with year filter
 ```bash
-python -m PyPaperBot --query="Machine learning" --scholar-pages=3  --min-year=2018 --dwn-dir="C:\User\example\papers" --scihub-mirror="https://sci-hub.do"
+python -m PyPaperBot --query="deep learning" --scholar-pages=3 --min-year=2020 --dwn-dir="./papers"
 ```
 
-Download papers from pages 4 to 7 (7th included) given a query and skip words:
-
+### Download specific page range with word exclusions
 ```bash
-python -m PyPaperBot --query="Machine learning" --scholar-pages=4-7 --dwn-dir="C:\User\example\papers" --skip-words="ai,decision tree,bot"
+python -m PyPaperBot --query="neural networks" --scholar-pages=4-7 --skip-words="survey,review" --dwn-dir="./papers"
 ```
 
-Download a paper given the DOI:
-
+### Download single paper by DOI
 ```bash
-python -m PyPaperBot --doi="10.0086/s41037-711-0132-1" --dwn-dir="C:\User\example\papers" -use-doi-as-filename`
+python -m PyPaperBot --doi="10.1038/s41586-021-03819-2" --dwn-dir="./papers" --use-doi-as-filename
 ```
 
-Download papers given a file containing the DOIs:
-
+### Download papers from DOI list
 ```bash
-python -m PyPaperBot --doi-file="C:\User\example\papers\file.txt" --dwn-dir="C:\User\example\papers"`
+python -m PyPaperBot --doi-file="dois.txt" --dwn-dir="./papers"
 ```
 
-If it doesn't work, try to use *py* instead of *python* i.e.
-
+### Download citations of a specific paper
 ```bash
-py -m PyPaperBot --doi="10.0086/s41037-711-0132-1" --dwn-dir="C:\User\example\papers"`
+python -m PyPaperBot --cites=3120460092236365926 --scholar-pages=2 --dwn-dir="./papers"
 ```
 
-Search papers that cite another (find ID in scholar address bar when you search citations):
-
+### Use custom Sci-Hub mirror
 ```bash
-python -m PyPaperBot --cites=3120460092236365926
+python -m PyPaperBot --query="quantum computing" --scholar-pages=1 --scihub-mirror="https://sci-hub.st" --dwn-dir="./papers"
 ```
 
-Using proxy
-
-```
-python -m PyPaperBot --query=rheumatoid+arthritis --scholar-pages=1 --scholar-results=7 --dwn-dir=/download --proxy="http://1.1.1.1::8080,https://8.8.8.8::8080"
-```
-```
-python -m PyPaperBot --query=rheumatoid+arthritis --scholar-pages=1 --scholar-results=7 --dwn-dir=/download -single-proxy=http://1.1.1.1::8080
-```
-
-Using hybrid download mode (automatically falls back to Selenium if HTTP fails):
-
+### Use proxy for downloads
 ```bash
-python -m PyPaperBot --query="machine learning" --scholar-pages=1 --dwn-dir="C:\User\example\papers" --scihub-mode=auto
+python -m PyPaperBot --query="bioinformatics" --scholar-pages=1 --single-proxy="http://proxy.example.com:8080" --dwn-dir="./papers"
 ```
 
-Force Selenium-only mode for Sci-Hub downloads:
-
+### Run with visible Chrome window (debugging)
 ```bash
-python -m PyPaperBot --query="machine learning" --scholar-pages=1 --dwn-dir="C:\User\example\papers" --scihub-mode=selenium
+python -m PyPaperBot --query="robotics" --scholar-pages=1 --no-headless --dwn-dir="./papers"
 ```
 
-Run Chrome with visible window (for debugging):
-
+### Force HTTP-only mode (faster, no Selenium)
 ```bash
-python -m PyPaperBot --query="machine learning" --scholar-pages=1 --dwn-dir="C:\User\example\papers" --no-headless
+python -m PyPaperBot --query="machine learning" --scholar-pages=1 --scihub-mode=http --dwn-dir="./papers"
 ```
 
-In termux, you can directly use ```PyPaperBot``` followed by arguments...
+---
 
-## Contributions
+## 🔧 Advanced Features
 
-Feel free to contribute to this project by proposing any change, fix, and enhancement on the **dev** branch
+### Download Strategy
+PyPaperBot uses an intelligent multi-stage download strategy:
 
-### To do
+1. **Google Scholar Direct Link** - Fastest, tries first
+2. **Sci-Hub Primary Mirror** (https://sci-hub.mk) - Most reliable
+3. **Sci-Hub Fallback Mirrors** - Automatic retry on failure
+4. **Smart Error Detection** - Identifies unavailable papers immediately
 
-- Tests
-- Code documentation
-- General improvements
+### Sci-Hub Mirror Management
+- **Auto-Selection**: Uses working mirrors automatically
+- **Cloudflare Retry**: Automatically retries once if blocked
+- **Paper Availability Detection**: Stops immediately if paper not in database
+- **Early Termination**: Stops after 5 consecutive failures to prevent endless loops
 
-## Disclaimer
+### Output Files
+- **`result.csv`** - Download report with sources and metadata
+- **`bibtex.bib`** - BibTeX entries for all papers
+- **`[paper_title].pdf`** - Individual PDF files (or DOI-based names)
 
-This application is for educational purposes only. I do not take responsibility for what you choose to do with this application.
+---
 
-## Donation
+## 🌐 Sci-Hub Access
 
-If you like this project, you can give me a cup of coffee :) 
+If Sci-Hub is blocked in your country:
+- Use a VPN service like [ProtonVPN](https://protonvpn.com/)
+- Use the `--single-proxy` or `--proxy` option
+- Try different mirrors with `--scihub-mirror`
+
+**Current Working Mirrors:**
+- https://sci-hub.mk (primary)
+- https://sci-hub.vg
+- https://sci-hub.al
+- https://sci-hub.shop
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please submit pull requests to the **dev** branch.
+
+### To-Do List
+- [ ] Comprehensive test suite
+- [ ] Enhanced code documentation
+- [ ] Performance optimizations
+- [ ] Additional paper sources
+
+---
+
+## ⚠️ Disclaimer
+
+This application is for **educational and research purposes only**. Users are responsible for complying with applicable laws and regulations regarding copyright and academic integrity. The developers do not take responsibility for misuse of this tool.
+
+---
+
+## ☕ Support the Project
+
+If you find PyPaperBot useful, consider supporting the developer:
 
 [![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.me/ferru97)
 
-yeah, 我们接管啦~
+---
+
+## 📄 License
+
+This project is open-source. See LICENSE file for details.
+
+---
+
+**Maintained by the PyPaperBot community** | [Telegram](https://t.me/pypaperbotdatawizards) | [Issues](https://github.com/your-repo/issues)

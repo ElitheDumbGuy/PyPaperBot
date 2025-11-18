@@ -32,7 +32,7 @@ def safe_print(text):
             print("[Title contains unsupported characters]")
 
 
-    ALLOWED_SCIHUB_MIRRORS = ["https://sci-hub.mk", "https://sci-hub.vg", "https://sci-hub.al", "https://sci-hub.shop"]
+ALLOWED_SCIHUB_MIRRORS = ["https://sci-hub.mk", "https://sci-hub.vg", "https://sci-hub.al", "https://sci-hub.shop"]
 
 
 def _normalize_mirror(url):
@@ -107,19 +107,21 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
     print("\nSci-Hub mirrors order: {}".format(" -> ".join(preferred_mirrors[:4])))
     print("The downloader will try Google Scholar first, then Sci-Hub mirrors.\n")
 
-    # Initialize hybrid Sci-Hub client
+    # Initialize hybrid Sci-Hub client (don't pass selenium_driver - let it create its own if needed)
     scihub_client = None
     if scihub_mode in ('auto', 'selenium'):
         scihub_client = SciHubClient(
             scihub_url=NetInfo.SciHub_URL,
-            use_selenium=(scihub_mode == 'selenium' or use_selenium),
+            use_selenium=(scihub_mode == 'selenium'),
             headless=headless,
-            selenium_driver=selenium_driver,
+            selenium_driver=None,  # Don't reuse Scholar's driver
             preferred_mirrors=preferred_mirrors
         )
 
     num_downloaded = 0
     paper_number = 1
+    consecutive_failures = 0
+    MAX_CONSECUTIVE_FAILURES = 5
     
     try:
         for p in papers:
@@ -132,6 +134,7 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
 
                     downloaded = False
                     download_error = None
+                    paper_failed = False
                     
                     # Attempt 1: Direct PDF link from Google Scholar (fastest, try first)
                     if not downloaded and p.pdf_link is not None:
@@ -141,6 +144,7 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                                 saveFile(pdf_dir, r.content, p, 3, "Google Scholar (direct link)")
                                 downloaded = True
                                 num_downloaded += 1
+                                consecutive_failures = 0  # Reset on success
                                 safe_print("  Downloaded from Google Scholar direct link")
                         except Exception:
                             pass
@@ -153,6 +157,7 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                                 saveFile(pdf_dir, r.content, p, 3, "Google Scholar (PDF link)")
                                 downloaded = True
                                 num_downloaded += 1
+                                consecutive_failures = 0  # Reset on success
                                 safe_print("  Downloaded from Google Scholar PDF link")
                         except Exception:
                             pass
@@ -170,6 +175,7 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                             )
                             downloaded = True
                             num_downloaded += 1
+                            consecutive_failures = 0  # Reset on success
                             safe_print("  Downloaded from Sci-Hub (DOI) via {}".format(mirror_url))
                         except SciHubDownloadError as e:
                             error_msg = str(e)
@@ -179,10 +185,12 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                             else:
                                 safe_print("  Sci-Hub: Download failed - {}".format(error_msg))
                                 download_error = "Sci-Hub error: " + error_msg[:50]
+                            paper_failed = True
                         except Exception as e:
                             error_type = type(e).__name__
                             safe_print("  Sci-Hub: Download failed ({})".format(error_type))
                             download_error = "Sci-Hub error: " + error_type
+                            paper_failed = True
                     
                     # Attempt 4: Sci-Hub via hybrid client (using scholar link if no DOI)
                     if not downloaded and p.scholar_link is not None and scihub_client:
@@ -222,6 +230,17 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                         p.downloaded = False
                         p.downloadedFrom = 0
                         p.download_source = ""
+                        
+                        # Track consecutive failures
+                        if paper_failed:
+                            consecutive_failures += 1
+                        
+                        # Early termination check
+                        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                            print("\n[STOP] {} consecutive download failures.".format(MAX_CONSECUTIVE_FAILURES))
+                            print("This may indicate Sci-Hub is down or blocking requests.")
+                            print("Successfully downloaded {} papers before stopping.\n".format(num_downloaded))
+                            break
                     
                     # Update CSV every 10 papers to avoid losing progress
                     if update_csv_callback and paper_number % 10 == 0:

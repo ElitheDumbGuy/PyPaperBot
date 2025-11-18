@@ -193,7 +193,15 @@ def scholar_requests(scholar_pages, url, restrict, chrome_version, scholar_resul
                 use_selenium = True
                 chrome_version = None  # Let undetected_chromedriver auto-detect
 
+    total_pages = len(list(scholar_pages))
+    page_num = 1
+    
     for i in scholar_pages:
+        print(f"\n{'='*60}")
+        print(f"Processing Google Scholar Page {page_num} of {total_pages}")
+        print(f"{'='*60}")
+        page_num += 1
+        
         while True:
             res_url = url % (scholar_results * (i - 1))
 
@@ -302,7 +310,11 @@ def scholar_requests(scholar_pages, url, restrict, chrome_version, scholar_resul
 
     # Clean up driver if created
     if driver:
-        driver.quit()
+        try:
+            driver.quit()
+        except (OSError, Exception) as e:
+            # Ignore handle errors on Windows during cleanup
+            pass
 
     return to_download
 

@@ -2,6 +2,9 @@
 
 __version__ = "1.4.1"
 
+# Global verbose flag for debug output
+VERBOSE = False
+
 import os
 import re
 import io
