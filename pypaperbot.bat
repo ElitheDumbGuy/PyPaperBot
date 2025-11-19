@@ -43,6 +43,7 @@ if errorlevel 1 (
 )
 
 REM Run PyPaperBot from source
+set PYTHONPATH=%SCRIPT_DIR%src
 python -m PyPaperBot %*
 
 REM Deactivate venv

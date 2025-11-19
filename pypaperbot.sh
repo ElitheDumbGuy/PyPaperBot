@@ -46,6 +46,7 @@ if ! python -c "import PyPaperBot" &> /dev/null; then
 fi
 
 # Run PyPaperBot from source
+export PYTHONPATH="$SCRIPT_DIR/src"
 python -m PyPaperBot "$@"
 
 # Store exit code before deactivating
