@@ -4,16 +4,16 @@ Created on Mon Jun  8 21:43:30 2020
 
 @author: Vito
 """
-import bibtexparser
-import re
-import pandas as pd
 import urllib.parse
+import re
+import bibtexparser
+import pandas as pd
 
 
 class Paper:
 
-
-    def __init__(self,title=None, scholar_link=None, scholar_page=None, cites=None, link_pdf=None, year=None, authors=None, DOI=None, jurnal=None):        
+    def __init__(self, title=None, scholar_link=None, scholar_page=None, cites=None, link_pdf=None, year=None,
+                 authors=None, DOI=None, jurnal=None):
         self.title = title
         self.scholar_page = scholar_page
         self.scholar_link = scholar_link
@@ -28,7 +28,7 @@ class Paper:
 
         # --- New fields for citation analysis ---
         self.is_seed = False
-        self.api_queried = False # Flag to check if OpenCitations has been queried for this paper
+        self.api_queried = False  # Flag to check if OpenCitations has been queried for this paper
         self.references = []
         self.citations = []
         self.citation_count = 0
@@ -40,17 +40,17 @@ class Paper:
         self.downloaded = False
         self.downloadedFrom = 0  # 1-SciHub 2-scholar
         self.download_source = ""
-        
-        self.use_doi_as_filename = False # if True, the filename will be the DOI
+
+        self.use_doi_as_filename = False  # if True, the filename will be the DOI
 
     def getFileName(self):
-            try:
-                if self.use_doi_as_filename:
-                    return urllib.parse.quote(self.DOI, safe='') + ".pdf"
-                else:
-                    return re.sub(r'[^\w\-_. ]', '_', self.title) + ".pdf"
-            except:
-                return "none.pdf"
+        try:
+            if self.use_doi_as_filename:
+                return urllib.parse.quote(self.DOI, safe='') + ".pdf"
+            else:
+                return re.sub(r'[^\w\-_. ]', '_', self.title) + ".pdf"
+        except Exception:
+            return "none.pdf"
 
     def setBibtex(self, bibtex):
         x = bibtexparser.loads(bibtex, parser=None)
@@ -66,12 +66,13 @@ class Paper:
             self.jurnal = x[0]["journal"].replace("\\", "") if "journal" in x[0] else None
             if self.jurnal is None:
                 self.jurnal = x[0]["publisher"].replace("\\", "") if "publisher" in x[0] else None
-        except:
+        except Exception:
             pass
 
     def canBeDownloaded(self):
         return self.DOI is not None or self.scholar_link is not None
 
+    @staticmethod
     def generateReport(papers, path):
         # Define the column names
         columns = ["Name", "Scholar Link", "DOI", "Bibtex", "PDF Name",
@@ -113,6 +114,7 @@ class Paper:
         df = pd.DataFrame(data, columns=columns)
         df.to_csv(path, index=False, encoding='utf-8')
 
+    @staticmethod
     def generateBibtex(papers, path):
         content = ""
         for p in papers:
@@ -123,6 +125,5 @@ class Paper:
         for c in relace_list:
             content = content.replace(c, "")
 
-        f = open(path, "w", encoding="latin-1", errors="ignore")
-        f.write(str(content))
-        f.close()
+        with open(path, "w", encoding="latin-1", errors="ignore") as f:
+            f.write(str(content))

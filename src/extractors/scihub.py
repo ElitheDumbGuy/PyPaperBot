@@ -5,13 +5,14 @@ Improved with smart error handling and mirror-specific configuration.
 """
 
 import time
+import json
+import os
+from urllib.parse import urlparse
 import requests
 import urllib3
-import json
-from lxml import etree
-from urllib.parse import urlparse
 from selenium.common.exceptions import TimeoutException
 
+# Use updated names if/when parsers.py is updated
 from extractors.parsers import getSchiHubPDF_xpath, is_scihub_paper_not_available, is_cloudflare_page
 from utils.net_info import NetInfo
 from utils.utils import URLjoin
@@ -49,19 +50,13 @@ FAKE_MARK_JSON = json.loads(r'''
 }
 ''')
 
+
 class SciHubDownloadError(Exception):
     """Raised when a paper cannot be downloaded from Sci-Hub."""
     pass
 
-class SciHubClient:
-    # Mirror configuration with method preferences
-    DEFAULT_MIRRORS = [
-        {"url": "https://sci-hub.mk", "method": "POST"},
-        {"url": "https://sci-hub.vg", "method": "POST"},
-        {"url": "https://sci-hub.al", "method": "POST"},
-        {"url": "https://sci-hub.shop", "method": "GET"},  # Only supports GET
-    ]
 
+class SciHubClient:
     def __init__(self, scihub_url=None, use_selenium=True, headless=True, selenium_driver=None, preferred_mirrors=None):
         self.use_selenium = use_selenium
         self.headless = headless
@@ -70,6 +65,9 @@ class SciHubClient:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
         })
+
+        # Load configuration
+        self.config = self._load_config()
         
         # Set up mirror configuration
         if preferred_mirrors:
@@ -83,16 +81,41 @@ class SciHubClient:
                     method = "GET" if "shop" in mirror else "POST"
                     self.mirrors.append({"url": mirror, "method": method})
         else:
-            self.mirrors = self.DEFAULT_MIRRORS.copy()
+            self.mirrors = self.config.get("scihub_mirrors", [])
+
+        # Default to NetInfo or config if mirrors list is empty
+        default_url = self.mirrors[0]["url"] if self.mirrors else NetInfo.SciHub_URL
+        self.scihub_url = scihub_url or default_url
         
-        self.scihub_url = scihub_url or (self.mirrors[0]["url"] if self.mirrors else NetInfo.SciHub_URL)
-        self.http_timeout = 15
-        self.page_load_timeout = 20
-        
+        self.http_timeout = self.config.get("http_timeout", 15)
+        self.page_load_timeout = self.config.get("page_load_timeout", 20)
+
         # Run DDOS-Guard bypass on first mirror only (quietly)
         if self.mirrors:
             self._ddos_guard_bypass(self.mirrors[0]["url"])
-    
+
+    def _load_config(self):
+        """Load configuration from config.json."""
+        config_path = "config.json"
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except json.JSONDecodeError:
+                print("Warning: Failed to parse config.json. Using defaults.")
+        
+        # Defaults if config is missing or invalid
+        return {
+            "scihub_mirrors": [
+                {"url": "https://sci-hub.mk", "method": "POST"},
+                {"url": "https://sci-hub.vg", "method": "POST"},
+                {"url": "https://sci-hub.al", "method": "POST"},
+                {"url": "https://sci-hub.shop", "method": "GET"}
+            ],
+            "http_timeout": 15,
+            "page_load_timeout": 20
+        }
+
     def _ddos_guard_bypass(self, url):
         """Attempts to bypass DDOS-Guard by mimicking SciHubEVA's request sequence."""
         try:
@@ -104,13 +127,15 @@ class SciHubClient:
 
             guard_url = f'{url.rstrip("/")}/.well-known/ddos-guard/check?context=free_splash'
             self.session.get(guard_url, verify=False, timeout=self.http_timeout)
-            
+
             mark_url = f'{url.rstrip("/")}/.well-known/ddos-guard/mark/'
             self.session.post(mark_url, json=FAKE_MARK_JSON, verify=False, timeout=self.http_timeout)
-            
+
             final_check = self.session.get(url, verify=False, timeout=self.http_timeout)
             return final_check.status_code != 403
 
+        except requests.exceptions.RequestException:
+            return False
         except Exception:
             return False
 
@@ -121,7 +146,7 @@ class SciHubClient:
 
     def _get_available_mirrors(self):
         return self.mirrors[:4]
-    
+
     def _download_via_http(self, identifier, mirror_config, is_doi=True, retry_on_cloudflare=True):
         """
         Attempt to download from a single mirror using its preferred method.
@@ -130,26 +155,26 @@ class SciHubClient:
         """
         mirror_url = mirror_config["url"]
         method = mirror_config["method"]
-        
+
         try:
             # Make request based on mirror's preferred method
             if method == "POST":
-                response = self.session.post(mirror_url, data={'request': identifier}, 
-                                            verify=False, timeout=self.http_timeout)
+                response = self.session.post(mirror_url, data={'request': identifier},
+                                             verify=False, timeout=self.http_timeout)
             else:  # GET
                 url = URLjoin(mirror_url.rstrip('/'), identifier)
                 response = self.session.get(url, verify=False, timeout=self.http_timeout)
-            
+
             # Check for 504 (paper not in database)
             if response.status_code == 504:
                 return None, None, 'not_available'
-            
+
             response.raise_for_status()
-            
+
             # Check if paper is not available in database
             if is_scihub_paper_not_available(response.content):
                 return None, None, 'not_available'
-            
+
             # Check for Cloudflare blocking
             if is_cloudflare_page(response.content):
                 if retry_on_cloudflare:
@@ -158,15 +183,15 @@ class SciHubClient:
                     print(f"  [Sci-Hub] Cloudflare detected on {mirror_url}, retrying...", file=sys.stderr)
                     time.sleep(2)
                     return self._download_via_http(identifier, mirror_config, is_doi, retry_on_cloudflare=False)
-                else:
-                    return None, None, 'cloudflare'
+                
+                return None, None, 'cloudflare'
 
             # Extract PDF URL using XPath
             pdf_url = getSchiHubPDF_xpath(response.content)
 
             if not pdf_url:
                 return None, None, 'no_pdf_link'
-            
+
             # Normalize URL
             parsed_pdf_url = urlparse(pdf_url)
             if not parsed_pdf_url.scheme:
@@ -179,9 +204,9 @@ class SciHubClient:
 
             if self._is_valid_pdf(pdf_response.content):
                 return pdf_response.content, pdf_response.url, None
-            else:
-                return None, None, 'invalid_pdf'
             
+            return None, None, 'invalid_pdf'
+
         except requests.exceptions.Timeout:
             return None, None, 'timeout'
         except requests.exceptions.HTTPError as e:
@@ -203,22 +228,22 @@ class SciHubClient:
         """
         available_mirrors = self._get_available_mirrors()
         first_error = None
-        
+
         for mirror_config in available_mirrors:
             pdf_content, source_url, error_type = self._download_via_http(identifier, mirror_config, is_doi)
-            
+
             if pdf_content:
                 return pdf_content, source_url, mirror_config["url"]
-            
+
             # Remember first error
             if first_error is None:
                 first_error = error_type
-            
+
             # Smart error handling: don't try other mirrors if paper is not available
             if error_type == 'not_available':
                 # Paper not in database, no point trying other mirrors
-                raise SciHubDownloadError(f"Paper not available in Sci-Hub database")
-        
+                raise SciHubDownloadError("Paper not available in Sci-Hub database")
+
         # All mirrors failed
         error_msg = {
             'cloudflare': 'Blocked by Cloudflare',
@@ -228,9 +253,9 @@ class SciHubClient:
             'http_error': 'HTTP error',
             'other': 'Unknown error'
         }.get(first_error, 'Failed to download')
-        
+
         raise SciHubDownloadError(f"{error_msg}: {identifier}")
-        
+
     def close(self):
         """Clean up resources gracefully."""
         if self.selenium_driver:
@@ -245,7 +270,7 @@ class SciHubClient:
             except (OSError, Exception):
                 # Ignore handle errors on Windows
                 pass
-        
+
         # Close requests session
         try:
             self.session.close()

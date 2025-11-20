@@ -1,8 +1,6 @@
 from os import path
-import requests
-import sys
-import io
 import urllib.parse
+import requests
 from utils.net_info import NetInfo
 from extractors.scihub import SciHubClient, SciHubDownloadError
 
@@ -55,7 +53,8 @@ def get_preferred_scihub_mirrors(custom_url=None):
     return mirrors
 
 
-def getSaveDir(folder, fname):
+def get_save_dir(folder, fname):
+    """Get a unique directory path for saving a file, handling duplicates."""
     dir_ = path.join(folder, fname)
     n = 1
     while path.exists(dir_):
@@ -65,10 +64,10 @@ def getSaveDir(folder, fname):
     return dir_
 
 
-def saveFile(file_name, content, paper, dwn_source, source_label=None):
-    f = open(file_name, 'wb')
-    f.write(content)
-    f.close()
+def save_file(file_name, content, paper, dwn_source, source_label=None):
+    """Save downloaded content to a file and update paper metadata."""
+    with open(file_name, 'wb') as f:
+        f.write(content)
 
     paper.downloaded = True
     paper.downloadedFrom = dwn_source
@@ -88,11 +87,14 @@ def _format_scihub_label(mirror_url):
     return "Sci-Hub ({})".format(host)
 
 
-def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
-                    use_selenium=True, headless=True, selenium_driver=None, scihub_mode='auto',
+def download_papers(papers, dwnl_dir, num_limit, scihub_url=None,
+                    headless=True, scihub_mode='auto',
                     update_csv_callback=None):
-
-    preferred_mirrors = get_preferred_scihub_mirrors(SciHub_URL)
+    """
+    Download papers from various sources (Scholar, Sci-Hub, etc).
+    Renamed from downloadPapers to snake_case.
+    """
+    preferred_mirrors = get_preferred_scihub_mirrors(scihub_url)
     NetInfo.SciHub_URL = preferred_mirrors[0]
 
     print("\nSci-Hub mirrors order: {}".format(" -> ".join(preferred_mirrors[:4])))
@@ -113,7 +115,7 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
     paper_number = 1
     consecutive_failures = 0
     MAX_CONSECUTIVE_FAILURES = 5
-    
+
     try:
         for p in papers:
             if p.canBeDownloaded() and (num_limit is None or num_downloaded < num_limit):
@@ -121,12 +123,12 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                     safe_print("Download {} of {} -> {}".format(paper_number, len(papers), p.title))
                     paper_number += 1
 
-                    pdf_dir = getSaveDir(dwnl_dir, p.getFileName())
+                    pdf_dir = get_save_dir(dwnl_dir, p.getFileName())
 
                     downloaded = False
                     download_error = None
                     paper_failed = False
-                    
+
                     # Attempt 1: Direct PDF link (Google Scholar or OpenAlex/Unpaywall)
                     if not downloaded and p.pdf_link is not None:
                         try:
@@ -138,33 +140,33 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                                     source_label = "OpenAlex/Unpaywall"
                                 elif "scholar" in p.pdf_link:
                                     source_label = "Google Scholar (direct link)"
-                                    
-                                saveFile(pdf_dir, r.content, p, 3, source_label)
+
+                                save_file(pdf_dir, r.content, p, 3, source_label)
                                 downloaded = True
                                 num_downloaded += 1
                                 consecutive_failures = 0  # Reset on success
                                 safe_print(f"  Downloaded from {source_label}")
-                        except Exception:
+                        except requests.exceptions.RequestException:
                             pass
-                    
+
                     # Attempt 2: Direct PDF link from scholar (if link ends with pdf)
                     if not downloaded and p.scholar_link is not None and p.scholar_link[-3:].lower() == "pdf":
                         try:
                             r = requests.get(p.scholar_link, headers=NetInfo.HEADERS, timeout=15)
                             if r.content[:4] == b'%PDF':
-                                saveFile(pdf_dir, r.content, p, 3, "Google Scholar (PDF link)")
+                                save_file(pdf_dir, r.content, p, 3, "Google Scholar (PDF link)")
                                 downloaded = True
                                 num_downloaded += 1
                                 consecutive_failures = 0  # Reset on success
                                 safe_print("  Downloaded from Google Scholar PDF link")
-                        except Exception:
+                        except requests.exceptions.RequestException:
                             pass
 
                     # Attempt 3: Sci-Hub via hybrid client (mirrors: .mk, .shop, .vg)
                     if not downloaded and p.DOI is not None and scihub_client:
                         try:
                             pdf_content, source_url, mirror_url = scihub_client.download(p.DOI, is_doi=True)
-                            saveFile(
+                            save_file(
                                 pdf_dir,
                                 pdf_content,
                                 p,
@@ -189,12 +191,12 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                             safe_print("  Sci-Hub: Download failed ({})".format(error_type))
                             download_error = "Sci-Hub error: " + error_type
                             paper_failed = True
-                    
+
                     # Attempt 4: Sci-Hub via hybrid client (using scholar link if no DOI)
                     if not downloaded and p.scholar_link is not None and scihub_client:
                         try:
                             pdf_content, source_url, mirror_url = scihub_client.download(p.scholar_link, is_doi=False)
-                            saveFile(
+                            save_file(
                                 pdf_dir,
                                 pdf_content,
                                 p,
@@ -219,7 +221,7 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                             safe_print("  Sci-Hub: Download failed ({})".format(error_type))
                             if not download_error:
                                 download_error = "Sci-Hub error: " + error_type
-                    
+
                     if not downloaded:
                         safe_print("  Failed to download: {}".format(p.title))
                         if download_error:
@@ -228,25 +230,25 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                         p.downloaded = False
                         p.downloadedFrom = 0
                         p.download_source = ""
-                        
+
                         # Track consecutive failures
                         if paper_failed:
                             consecutive_failures += 1
-                        
+
                         # Early termination check
                         if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                             print("\n[STOP] {} consecutive download failures.".format(MAX_CONSECUTIVE_FAILURES))
                             print("This may indicate Sci-Hub is down or blocking requests.")
                             print("Successfully downloaded {} papers before stopping.\n".format(num_downloaded))
                             break
-                    
+
                     # Update CSV every 10 papers to avoid losing progress
                     if update_csv_callback and paper_number % 10 == 0:
                         try:
                             update_csv_callback()
                         except Exception:
                             pass  # Don't fail downloads if CSV update fails
-                
+
                 except Exception as e:
                     # Catch any unexpected errors during paper processing
                     safe_print("  ERROR processing paper: {} - {}".format(p.title[:50] if p.title else "Unknown", type(e).__name__))
@@ -254,7 +256,7 @@ def downloadPapers(papers, dwnl_dir, num_limit, SciHub_URL=None, SciDB_URL=None,
                     p.downloadedFrom = 0
                     # Continue with next paper
                     continue
-    
+
     finally:
         # Clean up Sci-Hub client resources
         if scihub_client:

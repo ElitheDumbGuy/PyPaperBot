@@ -3,36 +3,35 @@
 import argparse
 import sys
 import os
-import time
-import requests
+import io
+import warnings
+from urllib.parse import urljoin
 
 # Updated imports for new flat layout structure
 from models.paper import Paper
 from utils.papers_filters import filterJurnals, filter_min_date
-from extractors.downloader import downloadPapers
-from extractors.scholar import ScholarPapersInfo
+from extractors.downloader import download_papers
+from extractors.scholar import get_scholar_papers_info
 from extractors.crossref import getPapersInfoFromDOIs
 from utils.proxy import proxy
-from urllib.parse import urljoin
 from core.project_manager import ProjectManager
 from analysis.citation_network import CitationProcessor
 from core.filtering import FilterEngine
+from utils import suppress_errors
 
 # Define version here if not available elsewhere immediately
 # or import from a central config
-__version__ = "2.0.0" # AcademicArchiver
+__version__ = "2.0.0"  # AcademicArchiver
 
-def checkVersion():
-    try :
+
+def check_version():
+    try:
         print("AcademicArchiver v" + __version__)
-        # Check PyPaperBot pypi for now or skip
-        # response = requests.get('https://pypi.org/pypi/pypaperbot/json', timeout=5)
-        # ...
-    except :
+    except Exception:
         pass
 
 
-def start(query, scholar_results, scholar_pages, dwn_dir, proxy, min_date=None, num_limit=None, num_limit_type=None,
+def start(query, scholar_results, scholar_pages, dwn_dir, proxy_list, min_date=None, num_limit=None, num_limit_type=None,
           filter_jurnal_file=None, restrict=None, DOIs=None, SciHub_URL=None, chrome_version=None, cites=None,
           use_doi_as_filename=False, SciDB_URL=None, skip_words=None, headless=True, scihub_mode='auto'):
 
@@ -43,7 +42,8 @@ def start(query, scholar_results, scholar_pages, dwn_dir, proxy, min_date=None, 
     if DOIs is None:
         print("Query: {}".format(query))
         print("Cites: {}".format(cites))
-        to_download = ScholarPapersInfo(query, scholar_pages, restrict, min_date, scholar_results, chrome_version, cites, skip_words, headless=headless)
+        to_download = get_scholar_papers_info(query, scholar_pages, restrict, min_date, scholar_results, chrome_version,
+                                              cites, skip_words, headless=headless)
     else:
         print("Downloading papers from DOIs\n")
         num = 1
@@ -81,42 +81,49 @@ def start(query, scholar_results, scholar_pages, dwn_dir, proxy, min_date=None, 
         def update_csv():
             Paper.generateReport(to_download, dwn_dir + "result.csv")
             Paper.generateBibtex(to_download, dwn_dir + "bibtex.bib")
-        
-        downloadPapers(to_download, dwn_dir, num_limit, SciHub_URL, SciDB_URL, 
-                       use_selenium=True, headless=headless, scihub_mode=scihub_mode,
-                       update_csv_callback=update_csv)
-        
+
+        download_papers(to_download, dwn_dir, num_limit, SciHub_URL,
+                        headless=headless, scihub_mode=scihub_mode,
+                        update_csv_callback=update_csv)
+
         # Final CSV update after downloads complete
         Paper.generateReport(to_download, dwn_dir + "result.csv")
         Paper.generateBibtex(to_download, dwn_dir + "bibtex.bib")
-        
-        print("\n" + "="*80)
-        print("  ✅ Download Complete!")
-        print("="*80)
-        print("\n📄 Results saved to: {}".format(dwn_dir))
-        print("   • result.csv  - Download report with sources")
-        print("   • bibtex.bib  - Bibliography entries")
-        print("   • *.pdf       - Downloaded papers")
-        print("="*80 + "\n")
+
+        print("\n" + "=" * 80)
+        print("  Download Complete!")
+        print("=" * 80)
+        print("\n Results saved to: {}".format(dwn_dir))
+        print("   * result.csv  - Download report with sources")
+        print("   * bibtex.bib  - Bibliography entries")
+        print("   * *.pdf       - Downloaded papers")
+        print("=" * 80 + "\n")
 
 
 def main():
     # Force unbuffered output for immediate feedback
-    import sys
     sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
     
+    # Ensure UTF-8 output on Windows
+    if sys.platform == 'win32':
+        # This might fail if stdout is redirected or not a console, so we wrap it
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
+
     # Suppress OSError from undetected_chromedriver cleanup
-    import warnings
     warnings.filterwarnings("ignore", category=DeprecationWarning)
-    
-    print("\n" + "="*80, flush=True)
+
+    # Use simple ASCII characters for Windows compatibility
+    print("\n" + "=" * 80, flush=True)
     print("  AcademicArchiver v{}".format(__version__))
     print("  Professional Scientific Paper Downloader")
-    print("="*80)
-    print("\n📚 Multi-source downloads: Google Scholar → Sci-Hub mirrors")
-    print("🔍 Smart filtering and validation")
-    print("📊 Real-time progress tracking\n")
-    print("="*80 + "\n")
+    print("=" * 80)
+    print("\n Multi-source downloads: Google Scholar -> Sci-Hub mirrors")
+    print(" Smart filtering and validation")
+    print(" Real-time progress tracking\n")
+    print("=" * 80 + "\n")
     parser = argparse.ArgumentParser(
         description='AcademicArchiver is python tool to search and dwonload scientific papers using Google Scholar, Crossref and SciHub')
     parser.add_argument('--query', type=str, default=None,
@@ -163,7 +170,7 @@ def main():
                         help='Run Chrome with visible browser window (default)')
     parser.add_argument('--scihub-mode', type=str, default='auto', choices=['auto', 'http', 'selenium'],
                         help='Sci-Hub download mode: auto (HTTP then Selenium), http (HTTP only), selenium (Selenium only). Default: auto')
-    
+
     # --- New arguments for citation analysis ---
     parser.add_argument('--expand-network', action='store_true', default=False,
                         help='Enable citation network analysis and expansion.')
@@ -172,10 +179,6 @@ def main():
     # --- End new arguments ---
 
     args = parser.parse_args()
-    
-    # Set global verbose flag
-    # import PyPaperBot # Removed
-    # PyPaperBot.VERBOSE = args.verbose # Need a new place for this
 
     if args.single_proxy is not None:
         os.environ['http_proxy'] = args.single_proxy
@@ -189,19 +192,19 @@ def main():
         proxy(pchain)
 
     if args.query is None and args.doi_file is None and args.doi is None and args.cites is None:
-        print("\n❌ Error: Missing required argument")
+        print("\n Error: Missing required argument")
         print("   Please provide one of: --query, --doi, --doi-file, or --cites")
         print("   Example: python -m core.cli --query=\"machine learning\" --scholar-pages=1 --dwn-dir=\"./output\"\n")
         sys.exit(1)
 
     if (args.query is not None and args.doi_file is not None) or (args.query is not None and args.doi is not None) or (
             args.doi is not None and args.doi_file is not None):
-        print("\n❌ Error: Conflicting arguments")
+        print("\n Error: Conflicting arguments")
         print("   Only one of --query, --doi-file, or --doi can be used at a time\n")
         sys.exit(1)
 
     if args.dwn_dir is None:
-        print("\n❌ Error: Missing required argument --dwn-dir")
+        print("\n Error: Missing required argument --dwn-dir")
         print("   Please specify output directory: --dwn-dir=\"./output\"\n")
         sys.exit(1)
 
@@ -218,15 +221,15 @@ def main():
     if args.expand_network:
         print("\n--- Running in Citation Network Expansion Mode ---")
         project_manager = ProjectManager(dwn_dir)
-        
+
         # TODO: Implement resume logic here
-        
+
         # 1. Get Seed Papers
         print("\nStep 1: Acquiring seed papers from Google Scholar...")
         if args.query is None and args.doi_file is None and args.doi is None and args.cites is None:
-             print("Error: For network expansion, provide an initial query, doi, or doi-file.")
-             sys.exit(1)
-        
+            print("Error: For network expansion, provide an initial query, doi, or doi-file.")
+            sys.exit(1)
+
         DOIs = None
         to_download = []
         if args.doi_file is not None or args.doi is not None:
@@ -235,16 +238,18 @@ def main():
             else:
                 DOIs = []
                 f = args.doi_file.replace('\\', '/')
-                with open(f) as file_in:
+                with open(f, encoding='utf-8') as file_in:
                     for line in file_in:
                         DOIs.append(line.strip())
-            
+
             for doi in DOIs:
                 paper_info = getPapersInfoFromDOIs(doi, args.restrict)
                 to_download.append(paper_info)
-        else: # Query or Cites
+        else:  # Query or Cites
             scholar_pages = _get_scholar_pages(args)
-            to_download = ScholarPapersInfo(args.query, scholar_pages, args.restrict, args.min_year, args.scholar_results, args.selenium_chrome_version, args.cites, args.skip_words, headless=args.headless)
+            to_download = get_scholar_papers_info(args.query, scholar_pages, args.restrict, args.min_year,
+                                                  args.scholar_results, args.selenium_chrome_version, args.cites,
+                                                  args.skip_words, headless=args.headless)
 
         print(f"Acquired {len(to_download)} seed papers.")
 
@@ -253,44 +258,43 @@ def main():
             journal_csv_path='data/scimagojr 2024.csv'
         )
         network = processor.build_network(to_download)
-        
+
         # 3. Interactive Filtering
         filter_engine = FilterEngine()
         papers_to_download_filtered = filter_engine.get_filtered_list(network)
-        
+
         # 4. Download Filtered Papers
         if papers_to_download_filtered:
             print(f"\nProceeding to download {len(papers_to_download_filtered)} papers...")
             # Setup for downloader
             max_dwn, max_dwn_type = _get_max_dwn_args(args)
-            
+
             def update_csv():
                 Paper.generateReport(papers_to_download_filtered, os.path.join(dwn_dir, "result.csv"))
                 Paper.generateBibtex(papers_to_download_filtered, os.path.join(dwn_dir, "bibtex.bib"))
 
-            downloadPapers(papers_to_download_filtered, dwn_dir, max_dwn, args.scihub_mirror, args.annas_archive_mirror, 
-                           use_selenium=True, headless=args.headless, scihub_mode=args.scihub_mode,
-                           update_csv_callback=update_csv)
-            
+            download_papers(papers_to_download_filtered, dwn_dir, max_dwn, args.scihub_mirror,
+                            headless=args.headless, scihub_mode=args.scihub_mode,
+                            update_csv_callback=update_csv)
+
             # Final report generation
             update_csv()
             print(f"\nFinal report updated: {os.path.join(dwn_dir, 'result.csv')}")
-        
+
         else:
             print("No papers selected for download based on the chosen filter.")
-        
+
         # 5. Save Project State
         # project_manager.save_state(network=network, cache=processor.citations_client.cache)
         project_manager.save_state(network=network)
         print(f"\nProject state saved to {project_manager.state_file}")
-        
+
         # Exit after the new workflow is complete
         sys.exit()
     # --- End New Workflow ---
 
-
     if args.max_dwn_year is not None and args.max_dwn_cites is not None:
-        print("\n❌ Error: Conflicting arguments")
+        print("\n Error: Conflicting arguments")
         print("   Only one of --max-dwn-year or --max-dwn-cites can be used at a time\n")
         sys.exit(1)
 
@@ -300,7 +304,7 @@ def main():
     if args.doi_file is not None:
         DOIs = []
         f = args.doi_file.replace('\\', '/')
-        with open(f) as file_in:
+        with open(f, encoding='utf-8') as file_in:
             for line in file_in:
                 if line[-1] == '\n':
                     DOIs.append(line[:-1])
@@ -319,10 +323,10 @@ def main():
         max_dwn = args.max_dwn_cites
         max_dwn_type = 1
 
-
-    start(args.query, args.scholar_results, scholar_pages, dwn_dir, proxy, args.min_year , max_dwn, max_dwn_type ,
+    start(args.query, args.scholar_results, scholar_pages, dwn_dir, proxy, args.min_year, max_dwn, max_dwn_type,
           args.journal_filter, args.restrict, DOIs, args.scihub_mirror, args.selenium_chrome_version, args.cites,
           args.use_doi_as_filename, args.annas_archive_mirror, args.skip_words, args.headless, args.scihub_mode)
+
 
 def _get_scholar_pages(args):
     """Helper function to parse scholar pages argument."""
@@ -346,6 +350,7 @@ def _get_scholar_pages(args):
             sys.exit()
     return 0
 
+
 def _get_max_dwn_args(args):
     """Helper function to parse max download arguments."""
     max_dwn = None
@@ -360,24 +365,21 @@ def _get_max_dwn_args(args):
 
 
 if __name__ == "__main__":
-    import sys
-    import io
-    from utils import suppress_errors
-    
+
     # Set UTF-8 encoding for stdout/stderr on Windows
     if sys.platform == 'win32':
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-    
+
     # Install custom exception hook to suppress Chrome cleanup errors
     suppress_errors.install()
-        
+
     try:
-        checkVersion()
+        check_version()
         main()
     except KeyboardInterrupt:
-        print("\n\n⚠️  Operation cancelled by user")
+        print("\n\n  Operation cancelled by user")
         sys.exit(0)
     except Exception as e:
-        print(f"\n\n❌ Fatal error: {e}")
+        print(f"\n\n Fatal error: {e}")
         sys.exit(1)

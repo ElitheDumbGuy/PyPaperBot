@@ -1,0 +1,24 @@
+{
+    "scihub_mirrors": [
+        {
+            "url": "https://sci-hub.mk",
+            "method": "POST"
+        },
+        {
+            "url": "https://sci-hub.vg",
+            "method": "POST"
+        },
+        {
+            "url": "https://sci-hub.al",
+            "method": "POST"
+        },
+        {
+            "url": "https://sci-hub.shop",
+            "method": "GET"
+        }
+    ],
+    "http_timeout": 15,
+    "page_load_timeout": 20,
+    "max_consecutive_failures": 5
+}
+

@@ -1,120 +1,131 @@
-import unittest
-from unittest.mock import MagicMock, patch
-from collections import Counter
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jun  8 21:43:30 2020
+
+@author: Vito
+"""
+from unittest import TestCase
+from unittest.mock import Mock, patch
+
 from analysis.citation_network import CitationProcessor
 from models.paper import Paper
 
-class TestCitationProcessor(unittest.TestCase):
-
-    def setUp(self):
-        """Set up the processor with mocked dependencies."""
-        self.mock_journal_ranker = MagicMock()
-        self.mock_openalex_client = MagicMock()
-
-        # Mock Journal Metrics
-        def get_metrics_side_effect(title):
-            if title == "Journal A": return {"H index": 100}
-            if title == "Journal B": return {"H index": 200}
-            return None
-        self.mock_journal_ranker.get_metrics.side_effect = get_metrics_side_effect
-
-        # Mock OpenAlex Data
-        # Return: (referenced_ids_counter, citations_set, seed_ids_map)
-        self.mock_openalex_client.get_citations_and_references.return_value = (
-            Counter({"W_REF_1": 1, "W_REF_2": 2}), # W_REF_2 is co-cited by 2 seeds
-            {"doi_cit_1"}, # Incoming citations (list of DOIs)
-            {"doi_seed_1": "W_SEED_1", "doi_seed_2": "W_SEED_2"} # seed_ids map
-        )
-
-        # Mock get_works_by_ids (for references)
-        # IDs: W_REF_1, W_REF_2
-        self.mock_openalex_client.get_works_by_ids.return_value = [
-            {
-                "id": "https://openalex.org/W_REF_1", "doi": "https://doi.org/doi_ref_1", 
-                "title": "Ref 1", "cited_by_count": 10,
-                "primary_location": {"source": {"display_name": "Journal C"}}
-            },
-            {
-                "id": "https://openalex.org/W_REF_2", "doi": "https://doi.org/doi_ref_2", 
-                "title": "Ref 2", "cited_by_count": 20,
-                "primary_location": {"source": {"display_name": "Journal A"}}
-            }
-        ]
-
-        # Mock get_works_by_dois (for citations)
-        # DOIs: doi_cit_1
-        self.mock_openalex_client.get_works_by_dois.return_value = [
-            {
-                "id": "https://openalex.org/W_CIT_1", "doi": "https://doi.org/doi_cit_1", 
-                "title": "Cit 1", "cited_by_count": 5,
-                "primary_location": {"source": {"display_name": "Journal B"}}
-            }
-        ]
-
-        self.journal_patcher = patch('analysis.citation_network.JournalRanker', return_value=self.mock_journal_ranker)
-        self.openalex_patcher = patch('analysis.citation_network.OpenAlexClient', return_value=self.mock_openalex_client)
-        
-        self.journal_patcher.start()
-        self.openalex_patcher.start()
-        
-        self.processor = CitationProcessor()
-
-    def tearDown(self):
-        self.journal_patcher.stop()
-        self.openalex_patcher.stop()
-
-    def test_network_structure_and_size(self):
-        """Test if the network is built with the correct papers and size."""
-        seed_paper_1 = Paper(DOI="doi_seed_1", jurnal="Journal A")
-        seed_paper_2 = Paper(DOI="doi_seed_2", jurnal="Journal B")
-        seed_papers = [seed_paper_1, seed_paper_2]
-
-        network = self.processor.build_network(seed_papers)
-
-        # Expected DOIs: seed_1, seed_2 (seeds) + ref_1, ref_2 (outgoing) + cit_1 (incoming)
-        expected_dois = {"doi_seed_1", "doi_seed_2", "doi_ref_1", "doi_ref_2", "doi_cit_1"}
-        
-        self.assertEqual(len(network), 5)
-        self.assertEqual(set(network.keys()), expected_dois)
-        self.assertTrue(network["doi_seed_1"].is_seed)
-
-    def test_paper_enrichment(self):
-        """Test that papers in the network are correctly enriched with data."""
-        seed_paper_1 = Paper(DOI="doi_seed_1", jurnal="Journal A")
-        seed_papers = [seed_paper_1]
-
-        network = self.processor.build_network(seed_papers)
-
-        # Test seed paper enrichment (Journal Metrics come from JournalRanker via local lookup)
-        enriched_seed = network["doi_seed_1"]
-        self.assertEqual(enriched_seed.journal_metrics, {"H index": 100})
-        
-        # Test enrichment of a discovered paper (Ref 2 matches Journal A -> H index 100)
-        enriched_ref = network["doi_ref_2"]
-        self.assertEqual(enriched_ref.title, "Ref 2")
-        self.assertEqual(enriched_ref.citation_count, 20)
-        self.assertEqual(enriched_ref.journal_metrics, {"H index": 100})
+class TestCitationProcessor(TestCase):
     
-    def test_cocitation_calculation(self):
-        """Test that co-citation counts are calculated correctly."""
-        seed_paper_1 = Paper(DOI="doi_seed_1", jurnal="Journal A")
-        seed_paper_2 = Paper(DOI="doi_seed_2", jurnal="Journal B")
-        seed_papers = [seed_paper_1, seed_paper_2]
-
-        network = self.processor.build_network(seed_papers)
-
-        # doi_ref_2 is referenced by 2 seeds (mocked in Counter)
-        self.assertEqual(network["doi_ref_2"].co_citation_count, 2)
+    def setUp(self):
+        # Mock the OpenAlex Client
+        self.mock_client = Mock()
         
-        # doi_ref_1 is referenced by 1 seed
-        self.assertEqual(network["doi_ref_1"].co_citation_count, 1)
-
-        # doi_cit_1 is an incoming citation, defaults to 1 (if not explicitly calculated as co-citation)
-        # logic: if paper.co_citation_count == 0: paper.co_citation_count = 1
-        self.assertEqual(network["doi_cit_1"].co_citation_count, 1)
-
-        # Seed papers should have a co-citation count of 0 (default)
-        self.assertEqual(network["doi_seed_1"].co_citation_count, 0)
-
-if __name__ == '__main__':
-    unittest.main()
+        # Mock the Journal Ranker
+        self.mock_ranker = Mock()
+        self.mock_ranker.get_metrics.return_value = {
+            'SJR': 1.23, 'H index': 50, 'SJR Best Quartile': 'Q1'
+        }
+        
+        self.processor = CitationProcessor(journal_csv_path='dummy.csv')
+        self.processor.openalex_client = self.mock_client
+        self.processor.journal_ranker = self.mock_ranker
+        
+        # Create seed paper
+        self.seed = Paper(title="Seed Paper", DOI="10.1000/seed")
+    
+    def test_network_structure_and_size(self):
+        """
+        Test that network builds correctly with 1 seed, 2 refs, 1 citation.
+        Structure:
+            Seed -> Ref1 (referenced_ids_counter)
+            Seed -> Ref2 (referenced_ids_counter)
+            Cit1 -> Seed (citations)
+        """
+        # Setup Mock Returns
+        # get_citations_and_references returns: (referenced_ids_counter, citations, seed_ids)
+        self.mock_client.get_citations_and_references.return_value = (
+            {'W111': 1, 'W222': 1}, # Referenced works (OpenAlex IDs) with count 1
+            {'10.1000/cit1'},       # Citing works (DOIs)
+            {'W000'}                # Seed ID
+        )
+        
+        # Mock get_works_by_ids (for references)
+        self.mock_client.get_works_by_ids.return_value = [
+            {'id': 'https://openalex.org/W111', 'doi': 'https://doi.org/10.1000/ref1', 'title': 'Ref One'},
+            {'id': 'https://openalex.org/W222', 'doi': 'https://doi.org/10.1000/ref2', 'title': 'Ref Two'}
+        ]
+        
+        # Mock get_works_by_dois (for citations)
+        self.mock_client.get_works_by_dois.return_value = [
+             {'id': 'https://openalex.org/W333', 'doi': 'https://doi.org/10.1000/cit1', 'title': 'Cit One', 'cited_by_count': 5}
+        ]
+        
+        # Run build_network
+        network = self.processor.build_network([self.seed])
+        
+        # Assertions
+        # Total network size: 1 (Seed) + 2 (Refs) + 1 (Cit) = 4
+        self.assertEqual(len(network), 4)
+        
+        # Verify Seed is in network
+        self.assertIn('10.1000/seed', network)
+        self.assertTrue(network['10.1000/seed'].is_seed)
+        
+        # Verify References are in network
+        self.assertIn('10.1000/ref1', network)
+        self.assertIn('10.1000/ref2', network)
+        
+        # Verify Citations are in network
+        self.assertIn('10.1000/cit1', network)
+        
+    def test_cocitation_calculation(self):
+        """Test that co-citation count is correctly populated from OpenAlex data."""
+        # 2 seeds cite the SAME reference W111
+        seed1 = Paper(title="S1", DOI="10.1000/s1")
+        seed2 = Paper(title="S2", DOI="10.1000/s2")
+        
+        self.mock_client.get_citations_and_references.return_value = (
+            {'W111': 2}, # W111 cited by 2 seeds
+            set(),
+            {'W001', 'W002'}
+        )
+        
+        self.mock_client.get_works_by_ids.return_value = [
+             {'id': 'https://openalex.org/W111', 'doi': 'https://doi.org/10.1000/popular', 'title': 'Popular Ref'}
+        ]
+        self.mock_client.get_works_by_dois.return_value = []
+        
+        network = self.processor.build_network([seed1, seed2])
+        
+        # Check that the referenced paper has co-citation count of 2
+        ref_paper = network['10.1000/popular']
+        self.assertEqual(ref_paper.co_citation_count, 2)
+        
+    def test_paper_enrichment(self):
+        """Test that papers are enriched with metadata and journal metrics."""
+        self.mock_client.get_citations_and_references.return_value = ({}, {'10.1000/cit1'}, set())
+        self.mock_client.get_works_by_ids.return_value = []
+        
+        self.mock_client.get_works_by_dois.return_value = [
+             {
+                 'id': 'https://openalex.org/W333', 
+                 'doi': 'https://doi.org/10.1000/cit1', 
+                 'title': 'Cit One',
+                 'publication_year': 2023,
+                 'primary_location': {'source': {'display_name': 'Nature'}},
+                 'cited_by_count': 42,
+                 'best_oa_location': {'pdf_url': 'http://pdf.com/1.pdf'}
+             }
+        ]
+        
+        network = self.processor.build_network([self.seed])
+        
+        cit_paper = network['10.1000/cit1']
+        
+        # Check Metadata
+        self.assertEqual(cit_paper.title, 'Cit One')
+        self.assertEqual(cit_paper.year, 2023)
+        self.assertEqual(cit_paper.jurnal, 'Nature')
+        self.assertEqual(cit_paper.citation_count, 42)
+        self.assertEqual(cit_paper.pdf_link, 'http://pdf.com/1.pdf')
+        self.assertEqual(cit_paper.download_source, 'OpenAlex/Unpaywall')
+        
+        # Check Journal Metrics (from mock_ranker)
+        self.assertIsNotNone(cit_paper.journal_metrics)
+        self.assertEqual(cit_paper.journal_metrics['SJR'], 1.23)

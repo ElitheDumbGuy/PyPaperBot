@@ -4,12 +4,16 @@ Created on Sun Jun  7 11:59:42 2020
 
 @author: Vito
 """
-from bs4 import BeautifulSoup
 import re
+from bs4 import BeautifulSoup
 from lxml import etree
 
 
-def schoolarParser(html):
+def parse_scholar_results(html):
+    """
+    Parse Google Scholar search results HTML.
+    Renamed from schoolarParser to snake_case.
+    """
     result = []
     soup = BeautifulSoup(html, "html.parser")
 
@@ -25,7 +29,7 @@ def schoolarParser(html):
     for element in soup.select("div.gs_r.gs_or.gs_scl"):
         # ----- End Modification -----
 
-        if not isBook(element):
+        if not is_book(element):
             title = None
             link = None
             link_pdf = None
@@ -49,7 +53,7 @@ def schoolarParser(html):
                     link_pdf = a.get("href")
             for div in element.findAll("div", class_="gs_a"):
                 try:
-                    authors, source_and_year, source = div.text.replace('\u00A0', ' ').split(" - ")
+                    authors, source_and_year, _ = div.text.replace('\u00A0', ' ').split(" - ")
                 except ValueError:
                     continue
 
@@ -74,10 +78,17 @@ def schoolarParser(html):
                     'link_pdf': link_pdf,
                     'year': year,
                     'authors': authors})
+        else:
+            # Log skipped books
+            h3_tag = element.find("h3", class_="gs_rt")
+            if h3_tag:
+                print(f"  [Skipped Book] {h3_tag.get_text()}")
+            
     return result
 
 
-def isBook(tag):
+def is_book(tag):
+    """Renamed from isBook to snake_case."""
     result = False
     for span in tag.findAll("span", class_="gs_ct2"):
         if span.text == "[B]":
@@ -97,31 +108,31 @@ def getSchiHubPDF_fallback(html):
     iframe = soup.find('iframe')
     if iframe and iframe.has_attr('src'):
         result = iframe.get('src')
-    
+
     # Then try embed
     if not result:
         embed = soup.find('embed')
         if embed and embed.has_attr('src'):
             result = embed.get('src')
-    
+
     # Then try object
     if not result:
         obj = soup.find('object')
         if obj and obj.has_attr('data'):
             result = obj.get('data')
-    
+
     # Fallback: plugin element
     if not result:
         plugin = soup.find(id='plugin')
         if plugin and plugin.has_attr('src'):
             result = plugin.get('src')
-    
+
     # Fallback: scidb download link
     if not result:
         download_scidb = soup.find("a", text=lambda text: text and "Download" in text, href=re.compile(r"\.pdf$"))
         if download_scidb:
             result = download_scidb.get("href")
-    
+
     # Handle relative URLs (prepend https:)
     if result and not result.startswith('http'):
         if result.startswith('//'):
@@ -137,19 +148,18 @@ def is_scihub_paper_not_available(html_content):
     """
     Check if Sci-Hub returned a "paper not available" page.
     Returns True if the paper is not in the database.
-    
+
     Specifically looks for: "Alas, the following paper is not yet available in my database"
     """
     if not html_content:
         return False
-    
+
     try:
         # Check for the specific "not yet available" message (most reliable)
         if b'not yet available in my database' in html_content:
             return True
-        
+
         # Also check for the block-rounded message element with specific text
-        from bs4 import BeautifulSoup
         soup = BeautifulSoup(html_content, "html.parser")
         message_block = soup.find('block-rounded', class_='message')
         if message_block:
@@ -157,10 +167,10 @@ def is_scihub_paper_not_available(html_content):
             # Only return True if it specifically mentions "not yet available" or "not available"
             if 'not yet available' in text or 'not available in my database' in text:
                 return True
-            
+
     except Exception:
         pass
-    
+
     return False
 
 
@@ -170,7 +180,7 @@ def is_cloudflare_page(html_content):
     """
     if not html_content:
         return False
-    
+
     try:
         # Common Cloudflare indicators
         if b'Cloudflare' in html_content or b'cf-browser-verification' in html_content:
@@ -179,7 +189,7 @@ def is_cloudflare_page(html_content):
             return True
     except Exception:
         pass
-    
+
     return False
 
 
@@ -189,37 +199,34 @@ def getSchiHubPDF_xpath(html_content):
     """
     if not html_content:
         return None
-        
+
     try:
         html = etree.HTML(html_content)
-        
+
         # XPath from SciHubEVA, looks for src attribute in elements with id="pdf" or inside id="article"
         pdf_xpath = '//*[@id="pdf"]/@src|//*[@id="article"]//iframe/@src'
         results = html.xpath(pdf_xpath)
-        
+
         if results:
             return results[0]
-            
+
     except Exception:
         # Fallback to BeautifulSoup if lxml fails, though it's less likely
         pass
 
     # Fallback logic from previous implementation
-    from bs4 import BeautifulSoup
-    import re
-
     result = None
     soup = BeautifulSoup(html_content, "html.parser")
-    
+
     iframe = soup.find('iframe')
     if iframe and iframe.has_attr('src'):
         result = iframe.get('src')
-    
+
     if not result:
         embed = soup.find('embed')
         if embed and embed.has_attr('src'):
             result = embed.get('src')
-    
+
     if not result:
         obj = soup.find('object')
         if obj and obj.has_attr('data'):
@@ -228,7 +235,8 @@ def getSchiHubPDF_xpath(html_content):
     return result
 
 
-def SciHubUrls(html):
+def get_scihub_urls(html):
+    """Renamed from SciHubUrls to snake_case."""
     result = []
     soup = BeautifulSoup(html, "html.parser")
 

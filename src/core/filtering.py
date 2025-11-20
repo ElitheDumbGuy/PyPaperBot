@@ -1,4 +1,5 @@
 import textwrap
+import sys
 
 class FilterEngine:
     """
@@ -134,8 +135,13 @@ class FilterEngine:
             
         # --- Get User Input ---
         while True:
-            choice = input(f"Enter choice [{'/'.join(results.keys())}]: ")
-            if choice in results:
-                print(f"\nSelected '{results[choice]['config']['name']}'. Preparing {results[choice]['count']} papers for download.")
-                return results[choice]['papers']
-            print("Invalid choice. Please try again.")
+            try:
+                choice = input(f"Enter choice [{'/'.join(results.keys())}]: ")
+                if choice in results:
+                    print(f"\nSelected '{results[choice]['config']['name']}'. Preparing {results[choice]['count']} papers for download.")
+                    return results[choice]['papers']
+                print("Invalid choice. Please try again.")
+            except (EOFError, KeyboardInterrupt):
+                # Graceful exit if input stream closes or user cancels
+                print("\nInput cancelled. Defaulting to 'All (No filtering)'.")
+                return results['4']['papers']

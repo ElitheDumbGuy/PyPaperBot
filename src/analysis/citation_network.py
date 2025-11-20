@@ -29,6 +29,17 @@ class CitationProcessor:
         """
         print("Starting citation network expansion using OpenAlex...")
         
+        # Pre-process seed papers: resolve DOIs from Titles if missing
+        for paper in seed_papers:
+            if not paper.DOI and paper.title:
+                print(f"  Resolving DOI for: {paper.title[:50]}...")
+                doi = self.openalex_client.get_doi_from_title(paper.title)
+                if doi:
+                    paper.DOI = doi
+                    print(f"    -> Found: {doi}")
+                else:
+                    print("    -> No match found.")
+
         seed_dois = [p.DOI for p in seed_papers if p.DOI]
         if not seed_dois:
             print("No valid DOIs found in seed papers. Skipping expansion.")
