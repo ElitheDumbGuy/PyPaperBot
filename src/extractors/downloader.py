@@ -3,8 +3,8 @@ import requests
 import sys
 import io
 import urllib.parse
-from ..utils.net_info import NetInfo
-from .scihub import SciHubClient, SciHubDownloadError
+from utils.net_info import NetInfo
+from extractors.scihub import SciHubClient, SciHubDownloadError
 
 def safe_print(text):
     """Print text safely handling Unicode characters on Windows."""

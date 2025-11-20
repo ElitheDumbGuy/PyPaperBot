@@ -7,17 +7,16 @@ import time
 import requests
 
 # Updated imports for new flat layout structure
-from ..models.paper import Paper
-from ..utils.papers_filters import filterJurnals, filter_min_date
-from ..extractors.downloader import downloadPapers
-from ..extractors.scholar import ScholarPapersInfo
-from ..extractors.crossref import getPapersInfoFromDOIs
-from ..utils.proxy import proxy
-from ..utils.utils import __version__ # Version might need to be moved or redefined
+from models.paper import Paper
+from utils.papers_filters import filterJurnals, filter_min_date
+from extractors.downloader import downloadPapers
+from extractors.scholar import ScholarPapersInfo
+from extractors.crossref import getPapersInfoFromDOIs
+from utils.proxy import proxy
 from urllib.parse import urljoin
-from ..core.project_manager import ProjectManager
-from ..analysis.citation_network import CitationProcessor
-from ..core.filtering import FilterEngine
+from core.project_manager import ProjectManager
+from analysis.citation_network import CitationProcessor
+from core.filtering import FilterEngine
 
 # Define version here if not available elsewhere immediately
 # or import from a central config
@@ -363,7 +362,7 @@ def _get_max_dwn_args(args):
 if __name__ == "__main__":
     import sys
     import io
-    from ..utils import suppress_errors
+    from utils import suppress_errors
     
     # Set UTF-8 encoding for stdout/stderr on Windows
     if sys.platform == 'win32':

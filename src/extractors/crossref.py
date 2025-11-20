@@ -1,5 +1,5 @@
 import requests
-from ..models.paper import Paper
+from models.paper import Paper
 
 def getPapersInfoFromDOIs(DOI, restrict):
     """
@@ -33,4 +33,3 @@ def getPapersInfoFromDOIs(DOI, restrict):
         print(f"Error fetching Crossref data for {DOI}: {e}")
         
     return paper
-
