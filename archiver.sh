@@ -1,7 +1,7 @@
 #!/bin/bash
-# PyPaperBot Linux/Mac Wrapper Script
-# This script runs PyPaperBot from source using a virtual environment
-# Usage: ./pypaperbot.sh --query="your query" --scholar-pages=1 --dwn-dir="./output" [other arguments]
+# AcademicArchiver Linux/Mac Wrapper Script
+# This script runs AcademicArchiver from source using a virtual environment
+# Usage: ./archiver.sh --query="your query" --scholar-pages=1 --dwn-dir="./output" [other arguments]
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -35,7 +35,7 @@ fi
 source venv/bin/activate
 
 # Check if dependencies are installed
-if ! python -c "import PyPaperBot" &> /dev/null; then
+if ! python -c "import requests; import pandas" &> /dev/null; then
     echo "Installing dependencies..."
     pip install -r requirements.txt
     if [ $? -ne 0 ]; then
@@ -45,9 +45,9 @@ if ! python -c "import PyPaperBot" &> /dev/null; then
     fi
 fi
 
-# Run PyPaperBot from source
+# Run AcademicArchiver from source
 export PYTHONPATH="$SCRIPT_DIR/src"
-python -m PyPaperBot "$@"
+python -m core.cli "$@"
 
 # Store exit code before deactivating
 EXIT_CODE=$?
@@ -55,6 +55,5 @@ EXIT_CODE=$?
 # Deactivate venv
 deactivate
 
-# Exit with the same code as PyPaperBot
+# Exit with the same code as AcademicArchiver
 exit $EXIT_CODE
-

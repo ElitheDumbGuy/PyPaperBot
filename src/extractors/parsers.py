@@ -13,17 +13,17 @@ def schoolarParser(html):
     result = []
     soup = BeautifulSoup(html, "html.parser")
 
-    # ----- 核心修改 -----
+    # ----- Core Modification -----
     #
-    # 旧的查找器 (过于严格):
+    # Old finder (too strict):
     # for element in soup.findAll("div", class_="gs_r gs_or gs_scl"):
     #
-    # 新的查找器 (使用 CSS 选择器):
-    # 这会找到所有同时包含 .gs_r, .gs_or, 和 .gs_scl 类的 <div> 标签,
-    # 无论它们是否还包含其他类 (比如 .gs_fmar)。
+    # New finder (using CSS selectors):
+    # This finds all <div> tags that contain .gs_r, .gs_or, AND .gs_scl classes,
+    # regardless of whether they contain other classes (like .gs_fmar).
     #
     for element in soup.select("div.gs_r.gs_or.gs_scl"):
-        # ----- 结束修改 -----
+        # ----- End Modification -----
 
         if not isBook(element):
             title = None
@@ -32,7 +32,7 @@ def schoolarParser(html):
             cites = None
             year = None
             authors = None
-            for h3 in element.findAll("h3", class_="gs_rt"):  # findAll在这里没问题
+            for h3 in element.findAll("h3", class_="gs_rt"):  # findAll is fine here
                 found = False
                 for a in h3.findAll("a"):
                     if not found:
@@ -41,7 +41,7 @@ def schoolarParser(html):
                         found = True
             for a in element.findAll("a"):
                 if "Cited by" in a.text:
-                    try:  # 增加一个 try-except 避免 "Cited by" 后面不是数字时崩溃
+                    try:  # Add try-except to avoid crash if "Cited by" is not followed by a number
                         cites = int(a.text[8:])
                     except ValueError:
                         cites = None

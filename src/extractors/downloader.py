@@ -3,17 +3,8 @@ import requests
 import sys
 import io
 import urllib.parse
-from .NetInfo import NetInfo
-from .scihub_client import SciHubClient, SciHubDownloadError
-
-# Set UTF-8 encoding for stdout on Windows to handle Unicode properly
-if sys.platform == 'win32':
-    try:
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    except (AttributeError, ValueError):
-        # If stdout is already wrapped or not available, use a wrapper function
-        pass
-
+from ..utils.net_info import NetInfo
+from .scihub import SciHubClient, SciHubDownloadError
 
 def safe_print(text):
     """Print text safely handling Unicode characters on Windows."""

@@ -1,6 +1,6 @@
-from .Paper import Paper
-from .JournalRanking import JournalRanker
-from .OpenAlex import OpenAlexClient
+from ..models.paper import Paper
+from .journal_metrics import JournalRanker
+from .openalex import OpenAlexClient
 
 class CitationProcessor:
     """

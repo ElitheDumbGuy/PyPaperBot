@@ -12,9 +12,9 @@ from lxml import etree
 from urllib.parse import urlparse
 from selenium.common.exceptions import TimeoutException
 
-from .HTMLparsers import getSchiHubPDF_xpath, is_scihub_paper_not_available, is_cloudflare_page
-from .NetInfo import NetInfo
-from .Utils import URLjoin
+from .parsers import getSchiHubPDF_xpath, is_scihub_paper_not_available, is_cloudflare_page
+from ..utils.net_info import NetInfo
+from ..utils.utils import URLjoin
 
 # Disable SSL warnings (Sci-Hub uses intermediate certificates)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)

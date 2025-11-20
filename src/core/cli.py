@@ -5,28 +5,31 @@ import sys
 import os
 import time
 import requests
-from .Paper import Paper
-from .PapersFilters import filterJurnals, filter_min_date, similarStrings
-from .Downloader import downloadPapers
-from .Scholar import ScholarPapersInfo
-from .Crossref import getPapersInfoFromDOIs
-from .proxy import proxy
-from .__init__ import __version__
+
+# Updated imports for new flat layout structure
+from ..models.paper import Paper
+from ..utils.papers_filters import filterJurnals, filter_min_date
+from ..extractors.downloader import downloadPapers
+from ..extractors.scholar import ScholarPapersInfo
+from ..extractors.crossref import getPapersInfoFromDOIs
+from ..utils.proxy import proxy
+from ..utils.utils import __version__ # Version might need to be moved or redefined
 from urllib.parse import urljoin
-from .ProjectManager import ProjectManager
-from .CitationProcessor import CitationProcessor
-from .FilterEngine import FilterEngine
+from ..core.project_manager import ProjectManager
+from ..analysis.citation_network import CitationProcessor
+from ..core.filtering import FilterEngine
+
+# Define version here if not available elsewhere immediately
+# or import from a central config
+__version__ = "2.0.0" # AcademicArchiver
 
 def checkVersion():
     try :
-        print("PyPaperBot v" + __version__)
-        # Add 5 second timeout to prevent hanging
-        response = requests.get('https://pypi.org/pypi/pypaperbot/json', timeout=5)
-        latest_version = response.json()['info']['version']
-        if latest_version != __version__:
-            print("NEW VERSION AVAILABLE!\nUpdate with 'pip install PyPaperBot —upgrade' to get the latest features!\n")
+        print("AcademicArchiver v" + __version__)
+        # Check PyPaperBot pypi for now or skip
+        # response = requests.get('https://pypi.org/pypi/pypaperbot/json', timeout=5)
+        # ...
     except :
-        # Silently fail if version check times out or fails
         pass
 
 
@@ -95,8 +98,6 @@ def start(query, scholar_results, scholar_pages, dwn_dir, proxy, min_date=None, 
         print("   • result.csv  - Download report with sources")
         print("   • bibtex.bib  - Bibliography entries")
         print("   • *.pdf       - Downloaded papers")
-        print("\n💬 Questions? Join: https://t.me/pypaperbotdatawizards")
-        print("☕ Like this tool? https://www.paypal.com/paypalme/ferru97")
         print("="*80 + "\n")
 
 
@@ -110,17 +111,15 @@ def main():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     
     print("\n" + "="*80, flush=True)
-    print("  PyPaperBot v{}".format(__version__))
+    print("  AcademicArchiver v{}".format(__version__))
     print("  Professional Scientific Paper Downloader")
     print("="*80)
     print("\n📚 Multi-source downloads: Google Scholar → Sci-Hub mirrors")
     print("🔍 Smart filtering and validation")
     print("📊 Real-time progress tracking\n")
-    print("💬 Join our Telegram: https://t.me/pypaperbotdatawizards")
-    print("☕ Support the project: https://www.paypal.com/paypalme/ferru97")
     print("="*80 + "\n")
     parser = argparse.ArgumentParser(
-        description='PyPaperBot is python tool to search and dwonload scientific papers using Google Scholar, Crossref and SciHub')
+        description='AcademicArchiver is python tool to search and dwonload scientific papers using Google Scholar, Crossref and SciHub')
     parser.add_argument('--query', type=str, default=None,
                         help='Query to make on Google Scholar or Google Scholar page link')
     parser.add_argument('--skip-words', type=str, default=None,
@@ -176,8 +175,8 @@ def main():
     args = parser.parse_args()
     
     # Set global verbose flag
-    import PyPaperBot
-    PyPaperBot.VERBOSE = args.verbose
+    # import PyPaperBot # Removed
+    # PyPaperBot.VERBOSE = args.verbose # Need a new place for this
 
     if args.single_proxy is not None:
         os.environ['http_proxy'] = args.single_proxy
@@ -193,7 +192,7 @@ def main():
     if args.query is None and args.doi_file is None and args.doi is None and args.cites is None:
         print("\n❌ Error: Missing required argument")
         print("   Please provide one of: --query, --doi, --doi-file, or --cites")
-        print("   Example: python -m PyPaperBot --query=\"machine learning\" --scholar-pages=1 --dwn-dir=\"./output\"\n")
+        print("   Example: python -m core.cli --query=\"machine learning\" --scholar-pages=1 --dwn-dir=\"./output\"\n")
         sys.exit(1)
 
     if (args.query is not None and args.doi_file is not None) or (args.query is not None and args.doi is not None) or (
@@ -227,7 +226,7 @@ def main():
         print("\nStep 1: Acquiring seed papers from Google Scholar...")
         if args.query is None and args.doi_file is None and args.doi is None and args.cites is None:
              print("Error: For network expansion, provide an initial query, doi, or doi-file.")
-             sys.exit()
+             sys.exit(1)
         
         DOIs = None
         to_download = []
@@ -277,7 +276,7 @@ def main():
             # Final report generation
             update_csv()
             print(f"\nFinal report updated: {os.path.join(dwn_dir, 'result.csv')}")
-
+        
         else:
             print("No papers selected for download based on the chosen filter.")
         
@@ -363,10 +362,16 @@ def _get_max_dwn_args(args):
 
 if __name__ == "__main__":
     import sys
-    from . import suppress_cleanup_errors
+    import io
+    from ..utils import suppress_errors
+    
+    # Set UTF-8 encoding for stdout/stderr on Windows
+    if sys.platform == 'win32':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     
     # Install custom exception hook to suppress Chrome cleanup errors
-    suppress_cleanup_errors.install()
+    suppress_errors.install()
         
     try:
         checkVersion()
@@ -376,5 +381,4 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         print(f"\n\n❌ Fatal error: {e}")
-        print("Please report this issue: https://t.me/pypaperbotdatawizards")
         sys.exit(1)

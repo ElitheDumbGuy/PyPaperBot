@@ -1,7 +1,7 @@
 @echo off
-REM PyPaperBot Windows Wrapper Script
-REM This script runs PyPaperBot from source using a virtual environment
-REM Usage: pypaperbot.bat --query="your query" --scholar-pages=1 --dwn-dir="./output" [other arguments]
+REM AcademicArchiver Windows Wrapper Script
+REM This script runs AcademicArchiver from source using a virtual environment
+REM Usage: archiver.bat --query="your query" --scholar-pages=1 --dwn-dir="./output" [other arguments]
 
 REM Get the directory where this script is located
 set SCRIPT_DIR=%~dp0
@@ -31,7 +31,7 @@ REM Activate venv
 call venv\Scripts\activate.bat
 
 REM Check if dependencies are installed
-python -c "import PyPaperBot" >nul 2>&1
+python -c "import requests; import pandas" >nul 2>&1
 if errorlevel 1 (
     echo Installing dependencies...
     pip install -r requirements.txt
@@ -42,10 +42,10 @@ if errorlevel 1 (
     )
 )
 
-REM Run PyPaperBot from source
+REM Run AcademicArchiver from source
+REM We set PYTHONPATH to include src so we can import top-level packages like core, extractors, etc.
 set PYTHONPATH=%SCRIPT_DIR%src
-python -m PyPaperBot %*
+python -m core.cli %*
 
 REM Deactivate venv
 call venv\Scripts\deactivate.bat
-
