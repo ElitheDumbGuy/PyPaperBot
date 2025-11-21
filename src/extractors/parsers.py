@@ -43,6 +43,12 @@ def parse_scholar_results(html):
                         title = a.text
                         link = a.get("href")
                         found = True
+            
+            # Ensure we found a title
+            if not title:
+                h3 = element.find("h3", class_="gs_rt")
+                if h3:
+                    title = h3.get_text()
             for a in element.findAll("a"):
                 if "Cited by" in a.text:
                     try:  # Add try-except to avoid crash if "Cited by" is not followed by a number

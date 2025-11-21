@@ -9,24 +9,24 @@ class FilterEngine:
     FILTER_PRESETS = {
         '1': {
             'name': 'High Quality (Strict)',
-            'min_cocitations': 3,
-            'min_h_index': 100,
+            'min_cocitations': 2,
+            'min_h_index': 60,
             'allowed_quartiles': {'Q1'},
-            'min_citations': 20,
+            'min_citations': 15,
         },
         '2': {
             'name': 'Medium Quality (Balanced)',
-            'min_cocitations': 2,
-            'min_h_index': 50,
+            'min_cocitations': 1,
+            'min_h_index': 30,
             'allowed_quartiles': {'Q1', 'Q2'},
-            'min_citations': 10,
+            'min_citations': 5,
         },
         '3': {
             'name': 'Broad Scope (Inclusive)',
-            'min_cocitations': 1,
-            'min_h_index': 20,
+            'min_cocitations': 0,
+            'min_h_index': 10,
             'allowed_quartiles': {'Q1', 'Q2', 'Q3'},
-            'min_citations': 5,
+            'min_citations': 1,
         },
         '4': {
             'name': 'All (No filtering)',
@@ -36,13 +36,13 @@ class FilterEngine:
     def _get_h_index(self, paper):
         """Safely retrieves the H-index from a paper's journal metrics."""
         if hasattr(paper, 'journal_metrics') and paper.journal_metrics:
-            return paper.journal_metrics.get('H index', 0)
+            return paper.journal_metrics.get('H_index', 0)
         return 0
 
     def _get_quartile(self, paper):
         """Safely retrieves the SJR Best Quartile from a paper's journal metrics."""
         if hasattr(paper, 'journal_metrics') and paper.journal_metrics:
-            return paper.journal_metrics.get('SJR Best Quartile')
+            return paper.journal_metrics.get('Quartile')
         return None
 
     def _is_match(self, paper, config):
@@ -72,18 +72,21 @@ class FilterEngine:
 
         return True
 
-    def get_filtered_list(self, network: dict) -> list:
+    def get_filtered_list(self, network: dict | list) -> list:
         """
         Applies presets to the network, prints an interactive menu, and returns
         the user's selected list of papers.
         
         Args:
-            network (dict): The citation network of Paper objects.
+            network (dict | list): The citation network of Paper objects.
         
         Returns:
             list: A list of Paper objects matching the user's selected filter.
         """
-        paper_list = list(network.values())
+        if isinstance(network, list):
+            paper_list = network
+        else:
+            paper_list = list(network.values())
         
         # Calculate the results for each preset
         results = {}

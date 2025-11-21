@@ -1,0 +1,57 @@
+{
+  "general": {
+    "description": "Balanced approach for general research.",
+    "sources": ["google_scholar", "openalex", "semantic_scholar"],
+    "recency_decay": "medium",
+    "weights": {
+        "norm_citations": 0.35,
+        "journal_score": 0.30,
+        "author_authority": 0.15,
+        "consensus": 0.10,
+        "recency": 0.10
+    }
+  },
+  "medicine": {
+    "description": "Prioritizes high-evidence studies (Meta-Analyses) and reputable journals.",
+    "sources": ["pubmed", "openalex", "google_scholar"],
+    "recency_decay": "slow",
+    "weights": {
+        "norm_citations": 0.30,
+        "journal_score": 0.40,
+        "author_authority": 0.10,
+        "consensus": 0.10,
+        "recency": 0.10
+    },
+    "evidence_boost": {
+        "meta-analysis": 15,
+        "systematic review": 15,
+        "review": 10,
+        "randomized controlled trial": 12
+    }
+  },
+  "cs": {
+    "description": "Fast-moving field. High weight on recency and ArXiv/Semantic Scholar.",
+    "sources": ["arxiv", "semantic_scholar", "google_scholar", "openalex"],
+    "recency_decay": "fast",
+    "weights": {
+        "norm_citations": 0.40,
+        "journal_score": 0.10,
+        "author_authority": 0.10,
+        "consensus": 0.10,
+        "recency": 0.30
+    }
+  },
+  "humanities": {
+    "description": "Long-term impact. Low recency decay.",
+    "sources": ["openalex", "google_scholar"],
+    "recency_decay": "none",
+    "weights": {
+        "norm_citations": 0.20,
+        "journal_score": 0.60,
+        "author_authority": 0.20,
+        "consensus": 0.0,
+        "recency": 0.0
+    }
+  }
+}
+

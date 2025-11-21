@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Jun  8 21:43:30 2020
-
-@author: Vito
+Paper model to store metadata and metrics.
 """
 import urllib.parse
 import re
@@ -20,44 +18,60 @@ class Paper:
         self.pdf_link = link_pdf
         self.year = year
         self.authors = authors
-
         self.jurnal = jurnal
         self.cites_num = None
         self.bibtex = None
         self.DOI = DOI
-
-        # --- New fields for citation analysis ---
+        
+        # --- Sources & IDs ---
+        self.sources = set()  # {'google_scholar', 'openalex', 'semantic_scholar', 'arxiv', 'core'}
+        self.openalex_id = None
+        self.semantic_scholar_id = None
+        self.arxiv_id = None
+        self.core_id = None
+        
+        # --- Metrics for Ranking ---
+        self.citation_count = 0 # Raw citations (highest found across sources)
+        self.citation_count_norm = 0.0 # Normalized per year
+        self.influential_citation_count = 0 # From Semantic Scholar
+        
+        self.journal_metrics = None # {'H_index': int, 'SJR': float, 'Quartile': str}
+        self.author_h_index = 0 # First author's H-Index
+        
+        self.network_centrality = 0.0 # PageRank score
+        self.recency_score = 0.0 # 0.0 - 1.0 based on age
+        self.consensus_score = 0.0 # Bonus for appearing in multiple sources
+        
+        self.composite_score = 0.0 # Final 0-100 rank
+        
+        # --- Network fields ---
         self.is_seed = False
-        self.api_queried = False  # Flag to check if OpenCitations has been queried for this paper
-        self.references = []
-        self.citations = []
-        self.citation_count = 0
-        self.reference_count = 0
+        self.references = [] # List of DOIs or IDs
+        self.citations = [] # List of DOIs or IDs
         self.co_citation_count = 0
-        self.journal_metrics = None
-        # --- End new fields ---
 
+        # --- Download Status ---
         self.downloaded = False
         self.downloadedFrom = 0  # 1-SciHub 2-scholar
         self.download_source = ""
-
-        self.use_doi_as_filename = False  # if True, the filename will be the DOI
+        self.use_doi_as_filename = False 
 
     def getFileName(self):
         try:
             if self.use_doi_as_filename:
                 return urllib.parse.quote(self.DOI, safe='') + ".pdf"
             else:
-                return re.sub(r'[^\w\-_. ]', '_', self.title) + ".pdf"
+                # Include year in filename for better sorting
+                prefix = f"({self.year}) " if self.year else ""
+                safe_title = re.sub(r'[^\w\-_. ]', '_', self.title)
+                return f"{prefix}{safe_title}.pdf"
         except Exception:
             return "none.pdf"
 
     def setBibtex(self, bibtex):
         x = bibtexparser.loads(bibtex, parser=None)
         x = x.entries
-
         self.bibtex = bibtex
-
         try:
             if "year" in x[0]:
                 self.year = x[0]["year"]
@@ -70,47 +84,52 @@ class Paper:
             pass
 
     def canBeDownloaded(self):
-        return self.DOI is not None or self.scholar_link is not None
+        return self.DOI is not None or self.scholar_link is not None or self.pdf_link is not None
 
     @staticmethod
     def generateReport(papers, path):
-        # Define the column names
-        columns = ["Name", "Scholar Link", "DOI", "Bibtex", "PDF Name",
-                   "Year", "Scholar page", "Journal", "Downloaded",
-                   "Downloaded from", "Authors"]
+        columns = [
+            "Rank Score", "Title", "Year", "Authors", "Journal", "DOI", 
+            "Norm Citations", "Raw Citations", "SJR", "Journal H-Index", "Author H-Index",
+            "Centrality", "Sources", 
+            "Downloaded", "Download Source"
+        ]
 
-        # Prepare data to populate the DataFrame
         data = []
-        for p in papers:
-            pdf_name = p.getFileName() if p.downloaded else ""
-            bibtex_found = p.bibtex is not None
+        # Sort by composite score descending
+        sorted_papers = sorted(papers, key=lambda x: x.composite_score, reverse=True)
+        
+        for p in sorted_papers:
+            # Safe extraction of metrics
+            sjr = 0.0
+            j_h_index = 0
+            if p.journal_metrics:
+                sjr = p.journal_metrics.get('SJR', 0.0)
+                j_h_index = p.journal_metrics.get('H_index', 0)
+            
+            # Format authors (truncate if too long)
+            authors_str = str(p.authors)
+            if len(authors_str) > 100:
+                authors_str = authors_str[:97] + "..."
 
-            # Determine download source
-            dwn_from = p.download_source or ""
-            if not dwn_from:
-                if p.downloadedFrom == 1:
-                    dwn_from = "SciDB"
-                elif p.downloadedFrom == 2:
-                    dwn_from = "SciHub"
-                elif p.downloadedFrom == 3:
-                    dwn_from = "Scholar"
-
-            # Append row data as a dictionary
             data.append({
-                "Name": p.title,
-                "Scholar Link": p.scholar_link,
-                "DOI": p.DOI,
-                "Bibtex": bibtex_found,
-                "PDF Name": pdf_name,
+                "Rank Score": f"{p.composite_score:.2f}",
+                "Title": p.title,
                 "Year": p.year,
-                "Scholar page": p.scholar_page,
+                "Authors": authors_str,
                 "Journal": p.jurnal,
-                "Downloaded": p.downloaded,
-                "Downloaded from": dwn_from,
-                "Authors": p.authors
+                "DOI": p.DOI,
+                "Norm Citations": f"{p.citation_count_norm:.2f}",
+                "Raw Citations": p.citation_count,
+                "SJR": f"{sjr:.3f}",
+                "Journal H-Index": j_h_index,
+                "Author H-Index": p.author_h_index,
+                "Centrality": f"{p.network_centrality:.4f}",
+                "Sources": ", ".join(p.sources),
+                "Downloaded": "Yes" if p.downloaded else "No",
+                "Download Source": p.download_source
             })
 
-        # Create a DataFrame and write to CSV
         df = pd.DataFrame(data, columns=columns)
         df.to_csv(path, index=False, encoding='utf-8')
 
@@ -120,10 +139,8 @@ class Paper:
         for p in papers:
             if p.bibtex is not None:
                 content += p.bibtex + "\n"
-
         relace_list = ["\ast", "*", "#"]
         for c in relace_list:
             content = content.replace(c, "")
-
         with open(path, "w", encoding="latin-1", errors="ignore") as f:
             f.write(str(content))

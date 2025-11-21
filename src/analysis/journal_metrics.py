@@ -18,6 +18,19 @@ class JournalRanker:
             self.df = pd.read_csv(csv_path, sep=';')
             # Clean up column names
             self.df.columns = [col.strip() for col in self.df.columns]
+            
+            # Parse SJR (European format: 1,234 -> 1.234)
+            def parse_sjr(val):
+                try:
+                    if isinstance(val, str):
+                        return float(val.replace(',', '.'))
+                    return float(val)
+                except (ValueError, TypeError):
+                    return 0.0
+            
+            if 'SJR' in self.df.columns:
+                self.df['SJR'] = self.df['SJR'].apply(parse_sjr)
+
             # Ensure 'Title' is string type for matching
             self.df['Title'] = self.df['Title'].astype(str)
             # Create a list of choices for fuzzy matching
@@ -51,8 +64,8 @@ class JournalRanker:
             journal_data = self.df.iloc[index]
             return {
                 'SJR': journal_data.get('SJR'),
-                'H index': journal_data.get('H index'),
-                'SJR Best Quartile': journal_data.get('SJR Best Quartile')
+                'H_index': journal_data.get('H index'),
+                'Quartile': journal_data.get('SJR Best Quartile')
             }
 
         # 2. SLOW PATH: Fuzzy matching

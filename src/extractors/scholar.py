@@ -224,28 +224,11 @@ def scholar_requests(scholar_pages, url, restrict, chrome_version, scholar_resul
                         print(f"Loading Google Scholar page: {res_url}")
                         driver.get(res_url)
 
-                        # Wait for page to load - Google Scholar uses JavaScript heavily
-                        # Wait for specific elements that indicate results are loaded
-                        try:
-                            # Wait for search results container (up to 15 seconds)
-                            # Try multiple selectors as Google Scholar structure may vary
-                            wait = WebDriverWait(driver, 15)
-                            try:
-                                wait.until(EC.presence_of_element_located((By.CLASS_NAME, "gs_r")))
-                                print("Search results loaded.")
-                            except Exception:
-                                # Try alternative selector
-                                try:
-                                    wait.until(EC.presence_of_element_located((By.ID, "gs_res_ccl")))
-                                    print("Search results container found.")
-                                except Exception:
-                                    # Last resort: wait for any content
-                                    wait.until(lambda d: len(d.page_source) > 10000)
-                                    print("Page content loaded.")
-                        except Exception as e:
-                            # If all waits fail, wait a fixed time
-                            print(f"Waiting for page to load (element detection failed: {type(e).__name__})...")
-                            time.sleep(8)  # Increased wait time for headless mode
+                        # Wait for page to load - simple but robust wait logic
+                        # Google Scholar relies heavily on JS to load results
+                        wait_time = 5  # Increased to 5s for safety
+                        print(f"Waiting {wait_time} seconds for Google Scholar JavaScript to load results...")
+                        time.sleep(wait_time)
 
                         html = driver.page_source
 

@@ -114,6 +114,12 @@ class CitationProcessor:
                 if metrics:
                     paper.journal_metrics = metrics
 
+        # Calculate simple centrality (normalized co-citation count)
+        max_cocite = max((p.co_citation_count for p in self.network.values()), default=1)
+        if max_cocite > 0:
+            for p in self.network.values():
+                p.network_centrality = p.co_citation_count / max_cocite
+
         print("Network processing complete.")
         return self.network
 
