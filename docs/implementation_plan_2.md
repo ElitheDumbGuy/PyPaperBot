@@ -1,107 +1,127 @@
-# Implementation Plan 2.0: Reliability, Consistency & UX Overhaul
+# Academic Archiver: The "Aggregator" Architecture Implementation Plan
 
-This document outlines the corrective roadmap for Academic Archiver v2.0. The primary goals are to fix data integrity issues (missing DOIs/metrics), unify inconsistent logic (journal ranking), and robustify the download/reporting pipeline.
+This document outlines the transformation of Academic Archiver from a Google Scholar scraper into a multi-source academic search and analysis engine.
 
----
-
-## Phase 1: Architecture & Consistency Fixes (Immediate Priority)
-
-### 1.1. Unify Journal Metrics Logic
-**Problem:** We currently have `JournalMetricLoader` (using `difflib`) in `src/analysis/ranking.py` and `JournalRanker` (using `rapidfuzz`) in `src/analysis/journal_metrics.py`. This causes inconsistent scoring and wasted memory.
-**Task:**
-*   [ ] Delete `JournalMetricLoader` from `ranking.py`.
-*   [ ] Update `RankingEngine` to use `JournalRanker`.
-*   [ ] Ensure `JournalRanker` correctly parses the European number format in the CSV (`145,004` -> `145.004`).
-
-### 1.2. Connect Interactive Filtering
-**Problem:** The `FilterEngine` exists but is never called in the CLI. Users search, and then *everything* is downloaded.
-**Task:**
-*   [ ] In `src/core/cli.py`, inject the `FilterEngine.get_filtered_list()` step after Ranking/Network Expansion and before Downloading.
-*   [ ] Allow users to skip filtering with a `--no-interactive` flag.
-
-### 1.3. Google Scholar as "Best Effort"
-**Problem:** If Google Scholar detects a bot/CAPTCHA, it can crash the `Aggregator` or hang the process.
-**Task:**
-*   [ ] Wrap `GoogleScholarSource.search` in a robust try/except block that returns an empty list on failure, logging a warning instead of crashing.
-*   [ ] Add a `--skip-scholar` flag to completely bypass it if the user knows they are blocked.
+## 1. Core Philosophy
+*   **Aggregator First:** We query multiple high-quality APIs (OpenAlex, Semantic Scholar, ArXiv, PubMed) to get the best metadata coverage.
+*   **Evidence-Based Ranking:** We rank papers not just by keyword match, but by a Composite Score derived from Journal Prestige (SJR), Author Authority (H-Index), Citation Impact (Norm Citations), and Consensus (Cross-Source Validation).
+*   **Field-Specific Presets:** We adapt our search strategy (Sources + Recency Decay) based on the academic discipline.
 
 ---
 
-## Phase 2: Data Enrichment & Integrity
+## 2. New Architecture Components
 
-### 2.1. Batch Author Metrics (Fix "Missing H-Indices")
-**Problem:** `ranking.py` fetches Author H-Indices one by one (`_fetch_author_h_index`). This hits rate limits immediately for search results >10 papers.
-**Task:**
-*   [ ] Refactor `RankingEngine` to collect all unique first authors from the paper list.
-*   [ ] Implement `OpenAlexClient.get_authors_batch(names)` to fetch metrics in chunks (OpenAlex supports `filter=display_name:A|B|C`).
-*   [ ] Map results back to papers in one pass.
+### 2.1. Data Models (`src/models/`)
+*   **`Paper` (Updated):**
+    *   `sources`: Set of strings (e.g., `{'openalex', 'arxiv'}`).
+    *   `composite_score`: Float (0-100).
+    *   `citation_count_norm`: Float (Citations per year).
+    *   `journal_metrics`: Dict (`{'SJR': 3.5, 'H_index': 150, 'quartile': 'Q1'}`).
+    *   `author_h_index_avg`: Float (Average H-Index of key authors).
+    *   `evidence_level`: String (`'meta-analysis'`, `'review'`, `'study'`).
 
-### 2.2. "DOI Rescue" Optimization
-**Problem:** Papers from Scholar often lack DOIs. The current rescue is serial and slow.
-**Task:**
-*   [ ] Implement parallel or batched "Title -> DOI" lookup.
-*   [ ] Use a progress bar (`tqdm`) for this step so the user knows the app hasn't frozen.
-*   [ ] Fallback: If OpenAlex fails to find a DOI, try Crossref API (optional, low priority).
+### 2.2. The Aggregator (`src/core/aggregator.py`)
+*   **`Aggregator` Class:** Orchestrates parallel queries to all configured sources.
+*   **`BaseSource` Interface:**
+    *   `GoogleScholarSource`: Scrapes titles/snippets.
+    *   `OpenAlexSource`: Uses `https://api.openalex.org/works` (Best for Metadata/DOI).
+    *   `SemanticScholarSource`: Uses `https://api.semanticscholar.org/graph/v1/paper/search` (Best for CS/Citations).
+    *   `ArxivSource`: Uses `http://export.arxiv.org/api/query` (Best for Preprints/Physics/Math).
+    *   `PubMedSource`: Uses `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi` (Best for Medicine).
+    *   `CoreSource` (Optional): Uses `https://api.core.ac.uk/v3/search/works` (UK Open Access).
 
-### 2.3. Scimago CSV Parsing
-**Problem:** The parser might be misinterpreting the CSV format.
-**Task:**
-*   [ ] Create a unit test `tests/test_journal_parsing.py` that loads `data/scimagojr 2024.csv` and asserts that "Nature" has a high SJR and H-Index.
-*   [ ] Verify the decimal separator handling (`,` vs `.`).
+### 2.3. The Ranking Engine (`src/analysis/ranking.py`)
+*   **`RankingEngine` Class:**
+    *   `calculate_composite_score(paper, preset)`: The master formula.
+    *   `_get_recency_multiplier(year, preset)`: Calculates decay.
+    *   `_classify_evidence(title, abstract)`: Heuristic tagging (Meta-Analysis vs Study).
 
----
-
-## Phase 3: Network Analysis & Centrality
-
-### 3.1. Fix Zero Centrality
-**Problem:** Centrality is 0 for all papers unless `--expand-network` is run. Even when run, it might not update the original objects.
-**Task:**
-*   [ ] If `--expand-network` is NOT run, hide the "Centrality" column in the final report (it's misleading).
-*   [ ] If it IS run, ensure the `network_map` results (which contain centrality) properly replace the original `papers_list` in the CLI flow.
-
-### 3.2. Graph Persistence
-**Problem:** If the app crashes during expansion, all graph data is lost.
-**Task:**
-*   [ ] Integrate `ProjectManager` to save the `network` state to `project_state.json` after expansion.
-*   [ ] Add a `--resume` flag to load the network from disk instead of starting over.
-
----
-
-## Phase 4: Download & Reporting Reliability
-
-### 4.1. Download Status Tracking
-**Problem:** "Downloaded" column often shows False even if successful?
-**Task:**
-*   [ ] Audit `downloader.py`. Ensure that when `save_file` succeeds, `paper.downloaded` is set to `True` **on the exact object instance** that is later passed to `generateReport`.
-*   [ ] Verify that `scihub_mode='auto'` correctly falls back to Selenium if HTTP fails.
-
-### 4.2. Intermediate Saving
-**Problem:** If the download loop crashes on paper #99 of 100, we lose the report for the first 99.
-**Task:**
-*   [ ] Call `Paper.generateReport` *incrementally* (e.g., every 10 papers) or catch exceptions in the download loop to ensure the final report is always generated for whatever was processed.
-
----
-
-## Testing Strategy
-
-### Stage 1: Unit Tests (Fast)
-1.  **Journal Parsing:** Verify correct SJR floats.
-2.  **Filter Engine:** Verify logic filters correctly.
-3.  **Paper Model:** Verify `canBeDownloaded()` logic.
-
-### Stage 2: Integration Tests (Live APIs)
-1.  **OpenAlex Batching:** Test fetching 10 authors at once.
-2.  **Scholar Fallback:** Disconnect internet/block Scholar and ensure app continues with other sources.
-3.  **DOI Rescue:** Feed a list of titles (no DOIs) and verify DOIs are found.
-
-### Stage 3: End-to-End Smoke Test
-Run:
-```bash
-python src/core/cli.py --query "machine learning fairness" --limit 5 --preset cs --expand-network
+### 2.4. Presets Configuration (`config/presets.json`)
+```json
+{
+  "medicine": {
+    "sources": ["pubmed", "openalex", "scholar"],
+    "recency_decay": "slow", // Medical knowledge lasts longer
+    "evidence_boost": {"meta-analysis": 15, "review": 10}
+  },
+  "cs": {
+    "sources": ["arxiv", "semanticscholar", "scholar"],
+    "recency_decay": "fast", // AI moves fast
+    "evidence_boost": {"survey": 10}
+  },
+  "humanities": {
+    "sources": ["openalex", "scholar", "core"],
+    "recency_decay": "none"
+  }
+}
 ```
-*   Expect: ~5-10 papers.
-*   Expect: DOIs found.
-*   Expect: SJR populated.
-*   Expect: Downloads attempted.
-*   Expect: CSV report generated.
+
+---
+
+## 3. Implementation Steps
+
+### Phase 1: The Aggregator Engine (Source Integration)
+1.  **Scaffold `Aggregator`:** Implement `search_all(query, preset)` method.
+2.  **Implement Sources:**
+    *   **ArXiv:** Parse Atom XML response (Namespace `http://arxiv.org/schemas/atom`). Map `arxiv:primary_category` to fields.
+    *   **Semantic Scholar:** Use Graph API `v1/paper/search`. Fetch `influentialCitationCount` and `s2FieldsOfStudy`.
+    *   **PubMed:** Use E-Utilities (`esearch` -> `esummary`). Parse XML DocSums.
+    *   **OpenAlex:** Optimize query filters (e.g., `is_oa=true`).
+3.  **Deduplication:** Refine the Merge logic.
+    *   *Rule:* If `DOI` matches -> Merge.
+    *   *Rule:* If `Title` (normalized) matches AND `Year` is within +/- 1 -> Merge.
+
+### Phase 2: The Ranking Engine (Scoring Logic)
+1.  **Journal Metrics:**
+    *   Load `data/scimagojr 2024.csv` into a fast lookup dict.
+    *   Implement fuzzy matching for Journal Names (e.g., "Nature Medicine" vs "Nat. Med.").
+2.  **Author Metrics:**
+    *   Query OpenAlex `authors` endpoint for the top author's H-Index.
+3.  **Recency Curves:**
+    *   Implement "Fast" (Sigmoid), "Medium" (Linear Clamped), and "Slow" (Flat) decay functions.
+4.  **Composite Formula:**
+    ```python
+    score = (
+        (norm_citations * 0.30) +
+        (journal_score * 0.30) +  # (SJR_norm * 0.7 + Journal_H_norm * 0.3)
+        (author_h_index * 0.15) +
+        (consensus_bonus * 0.10) + # +10 if in 3+ sources
+        (recency_multiplier * 0.15)
+    )
+    ```
+
+### Phase 3: Network & Analysis
+1.  **PageRank:**
+    *   Build `networkx` DiGraph from the merged papers.
+    *   Run `nx.pagerank(G)` and add `centrality` to the Composite Score (Optional 2nd Pass).
+
+### Phase 4: CLI & UX
+1.  **Update CLI:**
+    *   `--preset [general|medicine|cs|humanities]`
+    *   `--sources [list]` (Override presets).
+2.  **Interactive Filter:**
+    *   Display "Composite Score" instead of just "Citation Count".
+    *   Allow filtering by Evidence Level ("Show only Meta-Analyses").
+
+### Phase 5: Output & Archival
+1.  **Metadata:** Save `results.json` (Schema-compliant metadata).
+2.  **Downloads:**
+    *   Priority: Open Access Link -> Scholar PDF Link -> Sci-Hub (Fallback).
+
+---
+
+## 4. API Specific Notes (From Documentation)
+
+*   **ArXiv:** Respect the "3 second delay" rule mentioned in their docs if making multiple paging requests. Use `start` and `max_results`.
+*   **Semantic Scholar:** Use `fields=title,year,authors,venue,externalIds,citationCount,influentialCitationCount,openAccessPdf` to minimize payload. Batch requests if possible.
+*   **PubMed:** Requires `esearch.fcgi` to get IDs, then `esummary.fcgi` or `efetch.fcgi` to get details. `esummary` version 2.0 is preferred for XML parsing.
+*   **OpenAlex:** Use the `mailto` parameter to get faster/polite pool access.
+
+---
+
+## 5. Timeline
+1.  **Aggregator Setup** (Sources: ArXiv, Semantic, OpenAlex).
+2.  **PubMed Integration** (XML Parsing).
+3.  **Ranking Engine & Presets**.
+4.  **CLI Integration & Testing**.
 

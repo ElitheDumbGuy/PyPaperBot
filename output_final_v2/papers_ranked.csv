@@ -1,9 +1,0 @@
-Rank Score,Title,Year,Authors,Journal,DOI,Norm Citations,Raw Citations,SJR,Journal H-Index,Author H-Index,Centrality,Sources,Downloaded,Download Source
-62.37,Physics-informed machine learning,2021,"G. Karniadakis, I. Kevrekidis, Lu Lu, P. Perdikaris, Sifan Wang, Liu Yang",Nature Reviews Physics,10.1038/s42254-021-00314-5,1192.00,4768,9.803,87,0,0.0000,semantic_scholar,True,Sci-Hub (sci-hub.mk)
-50.55,Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms,2017,"Han Xiao, Kashif Rasul, Roland Vollgraf",arXiv.org,10.48550/arxiv.1708.07747,1220.88,9767,0.000,0,0,0.0000,semantic_scholar,False,
-42.45,Scikit-learn: Machine Learning in Python,2012,"Fabián Pedregosa, Gaël Varoquaux, Alexandre Gramfort, Vincent Michel, Bertrand Thirion, Olivier G...",arXiv (Cornell University),10.48550/arxiv.1201.0490,4838.92,62906,0.000,0,0,0.0000,openalex,True,Direct Link
-40.00,"Genetic algorithms in search, optimization, and machine learning",1989,,Choice Reviews Online,10.5860/choice.27-0936,1368.69,49273,0.000,0,0,0.0000,openalex,False,
-36.77,Media Portrayals of Nurse Retention: A Decade of News With Topic Modeling and Network Analysis.,2025,"Lee T, Lee J",Int Nurs Rev,10.1111/inr.70132,0.00,0,1.364,71,0,0.0000,pubmed,False,
-35.50,Spinal Cord Segmentation and Injury Detection based on Siamese Conventional WideRes Network using CT Image.,2025,"Geethanjali N, Sunitha G",Eur Spine J,10.1007/s00586-025-09587-1,0.00,0,1.076,173,0,0.0000,pubmed,False,
-13.04,Changing Data Sources in the Age of Machine Learning for Official Statistics,2023,"Cedric De Boom, Michael Reusens",ArXiv (stat.ML),10.48550/arxiv.2306.04338,0.00,0,0.000,0,0,0.0000,arxiv,True,Direct Link
-8.46,DOME: Recommendations for supervised machine learning validation in biology,2020,"Ian Walsh, Dmytro Fishman, Dario Garcia-Gasulla, Tiina Titma, Gianluca Pollastri, The ELIXIR Mach...",ArXiv (q-bio.OT),10.1038/s41592-021-01205-4,0.00,0,0.000,0,0,0.0000,arxiv,True,Direct Link

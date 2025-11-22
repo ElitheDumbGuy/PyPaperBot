@@ -7,6 +7,7 @@ from sources.openalex import OpenAlexSource
 from sources.semanticscholar import SemanticScholarSource
 from sources.arxiv import ArxivSource
 from sources.pubmed import PubMedSource
+from sources.core import CoreSource
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,11 +16,12 @@ class Aggregator:
     def __init__(self):
         # Initialize all sources
         self.sources = [
-            GoogleScholarSource(),
+            GoogleScholarSource(headless=False), # Explicitly non-headless
             OpenAlexSource(),
             SemanticScholarSource(),
             ArxivSource(),
-            PubMedSource()
+            PubMedSource(),
+            CoreSource()
         ]
     
     def search_all(self, query: str, limit_per_source: int = 10) -> Dict[str, Paper]:

@@ -10,7 +10,10 @@ def verify_scholar():
     print("\n[Google Scholar Verification]")
     print("Note: This requires Chrome/Selenium and may fail if blocked.")
     try:
-        source = GoogleScholarSource()
+        # Try with headless=False to see if it helps with detection
+        print("Initializing Google Scholar Source (Headless=False)...")
+        source = GoogleScholarSource(headless=False)
+        
         print("Searching for 'quantum computing'...")
         results = source.search("quantum computing", limit=3)
         print(f"Found {len(results)} papers.")
@@ -20,7 +23,8 @@ def verify_scholar():
             print(f"Sample Paper: {p.title} ({p.year})")
             print("[OK] Google Scholar Works")
         else:
-            print("[WARN] Google Scholar returned no results (Blocked?)")
+            print("[FAIL] Google Scholar returned no results. Possible CAPTCHA or parsing error.")
+            
     except Exception as e:
         print(f"[FAIL] Google Scholar Failed: {e}")
 

@@ -5,6 +5,9 @@ from extractors.scholar import get_scholar_papers_info
 from sources.base import BaseSource
 
 class GoogleScholarSource(BaseSource):
+    def __init__(self, headless=False):
+        self.headless = headless
+
     def search(self, query: str, limit: int) -> List[Paper]:
         logging.info(f"Searching Google Scholar for '{query}'...")
         try:
@@ -13,7 +16,7 @@ class GoogleScholarSource(BaseSource):
                 scholar_pages=range(1, 2),
                 restrict=0,
                 scholar_results=limit,
-                headless=True
+                headless=self.headless
             )
             for p in results:
                 p.sources.add('google_scholar')
